@@ -1,0 +1,1920 @@
+<title>D1 Max Operator Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+
+<style>
+/* ============================================================
+   PAGE TOKENS — light is the base set
+   ============================================================ */
+:root {
+  --ground:      #EFF1F3;
+  --surface:     #FFFFFF;
+  --surface-2:   #E5E9EC;
+  --ink:         #14191E;
+  --ink-2:       #3D474F;
+  --muted:       #6C7880;
+  --rule:        #D2D9DE;
+  --rule-strong: #B4BEC5;
+
+  --accent:      #0C6F79;
+  --accent-soft: #DCEDEE;
+  --accent-ink:  #06474E;
+
+  --ok:       #2C7F52;
+  --warn:     #9A6A08;
+  --critical: #AE4034;
+
+  /* HUD tokens — fixed. These render mockups of a night-ops product,
+     so they keep their own dark identity in either page theme. */
+  --hud-bg:     #0D1116;
+  --hud-panel:  #161C23;
+  --hud-panel2: #1E262F;
+  --hud-line:   #2B353F;
+  --hud-ink:    #DDE4EA;
+  --hud-muted:  #78848F;
+  --hud-teal:   #3FB6C1;
+  --hud-ok:     #46A96E;
+  --hud-warn:   #D9A521;
+  --hud-crit:   #E2594B;
+
+  --measure: 68ch;
+  --shell: 1140px;
+
+  --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #11151A;
+    --surface:     #171D24;
+    --surface-2:   #1F272F;
+    --ink:         #E3E8ED;
+    --ink-2:       #BAC4CD;
+    --muted:       #8B96A1;
+    --rule:        #2A333C;
+    --rule-strong: #3A454F;
+
+    --accent:      #3FB6C1;
+    --accent-soft: #12333A;
+    --accent-ink:  #8FD9E0;
+
+    --ok:       #4FA877;
+    --warn:     #D0A030;
+    --critical: #DD6355;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:      #11151A;
+  --surface:     #171D24;
+  --surface-2:   #1F272F;
+  --ink:         #E3E8ED;
+  --ink-2:       #BAC4CD;
+  --muted:       #8B96A1;
+  --rule:        #2A333C;
+  --rule-strong: #3A454F;
+
+  --accent:      #3FB6C1;
+  --accent-soft: #12333A;
+  --accent-ink:  #8FD9E0;
+
+  --ok:       #4FA877;
+  --warn:     #D0A030;
+  --critical: #DD6355;
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 1.0625rem;
+  line-height: 1.68;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell {
+  max-width: var(--shell);
+  margin: 0 auto;
+  padding: 0 clamp(1.1rem, 4vw, 2.5rem);
+}
+
+.col {
+  max-width: var(--measure);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--f-display);
+  color: var(--ink);
+  text-wrap: balance;
+  margin: 0;
+  line-height: 1.15;
+  letter-spacing: -0.012em;
+}
+
+p { margin: 0; }
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.eyebrow {
+  font-family: var(--f-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ============================================================
+   MASTHEAD
+   ============================================================ */
+.masthead {
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface);
+  padding: clamp(2.5rem, 6vw, 4.5rem) 0 0;
+}
+
+.masthead-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+h1 {
+  font-size: clamp(2.1rem, 5.4vw, 3.5rem);
+  font-weight: 700;
+  letter-spacing: -0.028em;
+}
+
+.thesis {
+  max-width: 60ch;
+  font-size: clamp(1.0625rem, 2vw, 1.25rem);
+  color: var(--ink-2);
+}
+
+.thesis em { color: var(--ink); font-style: italic; }
+
+.masthead-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.75rem;
+  padding-bottom: 2rem;
+  font-family: var(--f-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* the authority strip, used as the page's opening instrument */
+.strip-demo {
+  margin-top: 0.5rem;
+  border-radius: 5px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,.18), 0 8px 26px -12px rgba(0,0,0,.35);
+}
+
+.astrip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.4rem;
+  background: var(--hud-panel);
+  border: 1px solid var(--hud-line);
+  padding: 0.6rem 0.95rem;
+  font-family: var(--f-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--hud-muted);
+}
+
+.astrip b { color: var(--hud-ink); font-weight: 500; }
+
+.astrip .dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin-right: 0.45rem;
+  vertical-align: 1px;
+}
+
+.dot-ok   { background: var(--hud-ok);   box-shadow: 0 0 0 3px color-mix(in srgb, var(--hud-ok) 22%, transparent); }
+.dot-warn { background: var(--hud-warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--hud-warn) 22%, transparent); }
+.dot-crit { background: var(--hud-crit); box-shadow: 0 0 0 3px color-mix(in srgb, var(--hud-crit) 22%, transparent); }
+
+.astrip .spacer { margin-left: auto; }
+
+.strip-caption {
+  font-family: var(--f-mono);
+  font-size: 0.6875rem;
+  color: var(--muted);
+  margin-top: 0.65rem;
+  letter-spacing: 0.02em;
+}
+
+/* ============================================================
+   SECTIONS
+   ============================================================ */
+section {
+  padding: clamp(3rem, 7vw, 5rem) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+section:last-of-type { border-bottom: none; }
+
+.sec-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.sec-head h2 {
+  font-size: clamp(1.5rem, 3.2vw, 2.15rem);
+  font-weight: 600;
+}
+
+.sec-head p { max-width: var(--measure); color: var(--ink-2); }
+
+.stack { display: flex; flex-direction: column; gap: 1.15rem; }
+.stack-lg { display: flex; flex-direction: column; gap: 2.25rem; }
+
+h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.004em;
+}
+
+.lede {
+  font-size: 1.15rem;
+  color: var(--ink-2);
+  max-width: 62ch;
+}
+
+/* ============================================================
+   SPLIT TABLE — inspection vs security
+   ============================================================ */
+.split-wrap { overflow-x: auto; }
+
+table.split {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-family: var(--f-display);
+  font-size: 0.9375rem;
+}
+
+table.split th, table.split td {
+  text-align: left;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+table.split thead th {
+  font-size: 0.7rem;
+  font-family: var(--f-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--rule-strong);
+  padding-bottom: 0.6rem;
+}
+
+table.split tbody th {
+  font-weight: 500;
+  color: var(--muted);
+  width: 12rem;
+  font-size: 0.875rem;
+}
+
+table.split td { color: var(--ink); }
+
+table.split .hi {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+table.split tbody tr:last-child th,
+table.split tbody tr:last-child td { border-bottom: none; }
+
+.col-a { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+
+/* ============================================================
+   CARD GRID
+   ============================================================ */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 1.35rem 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.card h3 { font-size: 1rem; }
+.card p { font-size: 0.9375rem; color: var(--ink-2); }
+
+.card-tag {
+  font-family: var(--f-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* the loop cards */
+.loop {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.loop-head {
+  padding: 0.9rem 1.3rem;
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface-2);
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.loop-head h3 { font-size: 0.9375rem; }
+
+.loop-head .when {
+  font-family: var(--f-mono);
+  font-size: 0.6875rem;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.loop ol {
+  margin: 0;
+  padding: 1.15rem 1.3rem 1.15rem 2.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+  color: var(--ink-2);
+}
+
+.loop ol li::marker {
+  font-family: var(--f-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.loop-foot {
+  padding: 0.9rem 1.3rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.875rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.loop-foot b { color: var(--accent); font-weight: 600; font-family: var(--f-display); }
+
+/* ============================================================
+   DEVICE FRAMES + WIREFRAMES
+   ============================================================ */
+.wf-block {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.75rem;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .wf-block { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 2.5rem; }
+  .wf-block.flip > .wf-notes { order: -1; }
+}
+
+.wf-notes { display: flex; flex-direction: column; gap: 0.9rem; }
+.wf-notes h3 { font-size: 1.15rem; }
+.wf-notes p { font-size: 0.9688rem; color: var(--ink-2); }
+
+.wf-notes ul {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 0.9375rem;
+  color: var(--ink-2);
+}
+
+.wf-notes ul li::marker { color: var(--accent); }
+
+.device {
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-line);
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,.2), 0 20px 46px -22px rgba(0,0,0,.5);
+  font-family: var(--f-mono);
+  color: var(--hud-ink);
+}
+
+.device-portrait { max-width: 300px; }
+.device-desktop  { width: 100%; }
+
+.screen {
+  background: var(--hud-bg);
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.625rem;
+  line-height: 1.35;
+}
+
+/* strip inside device */
+.screen .astrip {
+  border: none;
+  border-bottom: 1px solid var(--hud-line);
+  font-size: 0.5625rem;
+  padding: 0.42rem 0.55rem;
+  gap: 0.3rem 0.75rem;
+  border-radius: 0;
+}
+
+/* --- video panel --- */
+.vid {
+  position: relative;
+  background:
+    linear-gradient(168deg, #1B242C 0%, #121A21 55%, #0E141A 100%);
+  flex: 1;
+  min-height: 132px;
+  overflow: hidden;
+}
+
+/* suggestion of a corridor / dock scene, drawn not photographed */
+.vid::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, rgba(63,182,193,.10), transparent 42%),
+    repeating-linear-gradient(102deg, rgba(255,255,255,.035) 0 1px, transparent 1px 26px);
+}
+
+.vid-scene {
+  position: absolute;
+  inset: 0;
+}
+
+.vid-tag {
+  position: absolute;
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: rgba(13,17,22,.82);
+  border: 1px solid var(--hud-line);
+  color: var(--hud-muted);
+}
+
+.vid-tag.lat-ok   { color: var(--hud-ok);   border-color: color-mix(in srgb, var(--hud-ok) 45%, var(--hud-line)); }
+.vid-tag.lat-warn { color: var(--hud-warn); border-color: color-mix(in srgb, var(--hud-warn) 45%, var(--hud-line)); }
+
+.minimap {
+  position: absolute;
+  top: 6px; left: 6px;
+  width: 62px; height: 46px;
+  background: rgba(13,17,22,.86);
+  border: 1px solid var(--hud-line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.minimap svg { display: block; width: 100%; height: 100%; }
+
+/* --- overlay CTA --- */
+.takeover-cta {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  transform: translate(-50%, -50%);
+  background: var(--hud-teal);
+  color: #06232A;
+  font-weight: 700;
+  font-size: 0.5625rem;
+  letter-spacing: 0.06em;
+  padding: 7px 13px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--hud-teal) 16%, transparent);
+}
+
+/* --- control deck --- */
+.deck {
+  border-top: 1px solid var(--hud-line);
+  background: var(--hud-panel);
+  padding: 0.5rem 0.55rem 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stick {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  border: 1px solid var(--hud-line);
+  background:
+    radial-gradient(circle at 50% 50%, var(--hud-panel2) 0 36%, transparent 37%),
+    var(--hud-bg);
+  display: grid;
+  place-items: center;
+  flex: none;
+  position: relative;
+}
+
+.stick::after {
+  content: "";
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: var(--hud-teal);
+  opacity: .85;
+}
+
+.stick span {
+  position: absolute;
+  bottom: -13px;
+  font-size: 0.4375rem;
+  letter-spacing: 0.08em;
+  color: var(--hud-muted);
+  white-space: nowrap;
+}
+
+.deck-mid {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.tool-row { display: flex; gap: 4px; }
+
+.tool {
+  width: 24px; height: 22px;
+  border-radius: 3px;
+  border: 1px solid var(--hud-line);
+  background: var(--hud-panel2);
+  display: grid;
+  place-items: center;
+  font-size: 0.5625rem;
+  color: var(--hud-muted);
+}
+
+.tool.on { border-color: var(--hud-teal); color: var(--hud-teal); background: color-mix(in srgb, var(--hud-teal) 14%, var(--hud-panel2)); }
+
+.safety-row { display: flex; gap: 6px; align-items: center; }
+
+.btn-abort, .btn-estop {
+  font-family: var(--f-mono);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  border-radius: 3px;
+  padding: 6px 11px;
+  white-space: nowrap;
+}
+
+.btn-abort {
+  background: var(--hud-panel2);
+  border: 1px solid var(--hud-line);
+  color: var(--hud-ink);
+}
+
+.btn-estop {
+  background: var(--hud-crit);
+  border: 1px solid var(--hud-crit);
+  color: #2A0B07;
+  padding: 7px 15px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hud-crit) 20%, transparent);
+}
+
+/* --- map panel --- */
+.mappanel {
+  position: relative;
+  background: var(--hud-bg);
+  flex: 1;
+  min-height: 190px;
+}
+
+.mappanel svg { display: block; width: 100%; height: 100%; }
+
+.vid-pip {
+  position: absolute;
+  right: 6px; bottom: 6px;
+  width: 76px; height: 50px;
+  border: 1px solid var(--hud-line);
+  border-radius: 3px;
+  background: linear-gradient(168deg, #1B242C, #0F161C);
+  overflow: hidden;
+}
+
+.vid-pip .vid-tag { right: 3px; bottom: 3px; font-size: 0.4375rem; padding: 1px 3px; }
+
+/* --- readout rows --- */
+.readout {
+  border-top: 1px solid var(--hud-line);
+  background: var(--hud-panel);
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.readout .r1 { color: var(--hud-ink); font-size: 0.5938rem; letter-spacing: 0.02em; }
+.readout .r2 { color: var(--hud-muted); font-size: 0.5625rem; }
+.readout .r2 b { color: var(--hud-warn); font-weight: 500; }
+
+/* step strip */
+.steps {
+  display: flex;
+  border-top: 1px solid var(--hud-line);
+  background: var(--hud-bg);
+  font-size: 0.5313rem;
+}
+
+.steps div {
+  padding: 0.45rem 0.4rem;
+  border-right: 1px solid var(--hud-line);
+  color: var(--hud-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.steps div:last-child { border-right: none; }
+.steps div.done { color: color-mix(in srgb, var(--hud-ok) 80%, var(--hud-muted)); }
+.steps div.now {
+  color: var(--hud-bg);
+  background: var(--hud-teal);
+  font-weight: 700;
+  flex: 1.3;
+}
+
+/* ============================================================
+   TRIAGE + WIPE COMPARATOR (interactive)
+   ============================================================ */
+.triage-head {
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid var(--hud-line);
+  background: var(--hud-panel);
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.5938rem;
+}
+
+.triage-head b { color: var(--hud-ink); font-weight: 500; letter-spacing: 0.02em; }
+.triage-head span { color: var(--hud-muted); margin-left: auto; }
+
+.wipe {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: #0A0E12;
+  overflow: hidden;
+  touch-action: none;
+  cursor: ew-resize;
+  user-select: none;
+}
+
+.wipe svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+.wipe .layer-now { clip-path: inset(0 0 0 var(--wipe, 52%)); }
+
+.wipe-handle {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: var(--wipe, 52%);
+  width: 2px;
+  background: var(--hud-teal);
+  transform: translateX(-1px);
+  pointer-events: none;
+}
+
+.wipe-handle::after {
+  content: "";
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 22px; height: 22px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--hud-teal);
+  border: 2px solid var(--hud-bg);
+}
+
+.wipe-lab {
+  position: absolute;
+  top: 6px;
+  font-size: 0.4688rem;
+  letter-spacing: 0.1em;
+  padding: 2px 5px;
+  border-radius: 2px;
+  background: rgba(10,14,18,.85);
+  border: 1px solid var(--hud-line);
+  color: var(--hud-muted);
+  pointer-events: none;
+}
+
+.wipe-lab.l { left: 6px; }
+.wipe-lab.r { right: 6px; color: var(--hud-teal); border-color: color-mix(in srgb, var(--hud-teal) 40%, var(--hud-line)); }
+
+.triage-meta {
+  border-top: 1px solid var(--hud-line);
+  background: var(--hud-panel);
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.5625rem;
+  color: var(--hud-muted);
+}
+
+.triage-meta .pose-ok { color: var(--hud-ok); }
+
+.triage-actions {
+  display: flex;
+  border-top: 1px solid var(--hud-line);
+}
+
+.triage-actions div {
+  flex: 1;
+  text-align: center;
+  padding: 0.6rem 0.3rem;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border-right: 1px solid var(--hud-line);
+  background: var(--hud-panel2);
+  color: var(--hud-muted);
+}
+
+.triage-actions div:last-child { border-right: none; }
+.triage-actions .a-ok  { color: var(--hud-ok); flex: 1.25; }
+.triage-actions .a-esc { color: var(--hud-crit); }
+
+/* ============================================================
+   ALERT SCREEN
+   ============================================================ */
+.alert-head {
+  background: color-mix(in srgb, var(--hud-crit) 18%, var(--hud-panel));
+  border-bottom: 1px solid color-mix(in srgb, var(--hud-crit) 45%, var(--hud-line));
+  padding: 0.6rem;
+}
+
+.alert-head .t {
+  color: var(--hud-crit);
+  font-weight: 700;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+}
+
+.alert-head .s { color: var(--hud-muted); font-size: 0.5625rem; margin-top: 2px; }
+
+.clip {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background: linear-gradient(168deg, #1A222A, #0D1319);
+  border-bottom: 1px solid var(--hud-line);
+}
+
+.clip svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.clip-play {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%,-50%);
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: rgba(13,17,22,.75);
+  border: 1px solid var(--hud-line);
+  display: grid; place-items: center;
+  color: var(--hud-ink);
+  font-size: 0.625rem;
+}
+
+.alert-row {
+  padding: 0.5rem 0.6rem;
+  font-size: 0.5625rem;
+  color: var(--hud-muted);
+  border-bottom: 1px solid var(--hud-line);
+}
+
+.alert-cta {
+  margin: 0.6rem;
+  background: var(--hud-teal);
+  color: #06232A;
+  font-weight: 700;
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-align: center;
+  padding: 0.65rem;
+  border-radius: 4px;
+}
+
+.alert-sub {
+  display: flex;
+  gap: 6px;
+  padding: 0 0.6rem 0.6rem;
+}
+
+.alert-sub div {
+  flex: 1;
+  text-align: center;
+  padding: 0.5rem;
+  font-size: 0.5625rem;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--hud-line);
+  border-radius: 3px;
+  color: var(--hud-muted);
+  background: var(--hud-panel2);
+}
+
+/* ============================================================
+   DESKTOP WIREFRAME
+   ============================================================ */
+.dt {
+  display: grid;
+  grid-template-columns: 92px minmax(0,1fr) 168px;
+  min-height: 250px;
+}
+
+@media (max-width: 620px) {
+  .dt { grid-template-columns: 62px minmax(0,1fr); }
+  .dt .dt-right { display: none; }
+}
+
+.dt-rail {
+  background: var(--hud-panel);
+  border-right: 1px solid var(--hud-line);
+  padding: 0.55rem 0.45rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  font-size: 0.5313rem;
+}
+
+.dt-rail .ri { padding: 0.3rem 0.35rem; border-radius: 3px; color: var(--hud-muted); }
+.dt-rail .ri.on { background: var(--hud-panel2); color: var(--hud-teal); }
+.dt-rail .rh { color: var(--hud-line); letter-spacing: 0.1em; padding: 0.35rem; }
+
+.dt-main { position: relative; background: var(--hud-bg); }
+.dt-main svg { display: block; width: 100%; height: 100%; min-height: 250px; }
+
+.dt-right {
+  background: var(--hud-panel);
+  border-left: 1px solid var(--hud-line);
+  padding: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 0.5313rem;
+}
+
+.dt-right .h {
+  color: var(--hud-muted);
+  letter-spacing: 0.1em;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--hud-line);
+}
+
+.wp {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  padding: 0.32rem 0.3rem;
+  border-radius: 3px;
+  background: var(--hud-panel2);
+  color: var(--hud-ink);
+}
+
+.wp .n {
+  width: 13px; height: 13px;
+  border-radius: 2px;
+  background: var(--hud-line);
+  color: var(--hud-ink);
+  display: grid; place-items: center;
+  font-size: 0.4375rem;
+  flex: none;
+}
+
+.wp.cap .n { background: var(--hud-teal); color: #06232A; }
+.wp .lab { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp .k { margin-left: auto; color: var(--hud-muted); font-size: 0.4688rem; }
+
+/* ============================================================
+   CALLOUT + LISTS
+   ============================================================ */
+.callout {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 1.05rem 1.25rem;
+  border-radius: 0 5px 5px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.callout p { font-size: 0.9688rem; color: var(--ink); }
+.callout .eyebrow { color: var(--accent-ink); }
+
+.dont {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.dont-row {
+  display: grid;
+  grid-template-columns: 1.6rem minmax(0,1fr);
+  gap: 0.85rem;
+  padding: 0.95rem 0.2rem;
+  border-bottom: 1px solid var(--rule);
+  align-items: baseline;
+}
+
+.dont-row .x {
+  font-family: var(--f-mono);
+  color: var(--critical);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.dont-row b { font-family: var(--f-display); font-weight: 600; font-size: 0.9688rem; }
+.dont-row p { font-size: 0.9375rem; color: var(--muted); margin-top: 0.2rem; }
+
+/* build order — a real sequence, so it gets real numbers */
+.seq { display: flex; flex-direction: column; }
+
+.seq-row {
+  display: grid;
+  grid-template-columns: 3rem minmax(0,1fr) auto;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 0.9rem 0.4rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.seq-row:first-child { border-top: 1px solid var(--rule); }
+
+.seq-n {
+  font-family: var(--f-mono);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.seq-row b { font-family: var(--f-display); font-weight: 600; font-size: 1rem; }
+.seq-row p { font-size: 0.9375rem; color: var(--muted); margin-top: 0.15rem; }
+
+.seq-badge {
+  font-family: var(--f-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--rule-strong);
+  border-radius: 99px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+.seq-badge.insp { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--rule)); }
+.seq-badge.sec  { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 42%, var(--rule)); }
+
+@media (max-width: 560px) {
+  .seq-row { grid-template-columns: 2.2rem minmax(0,1fr); }
+  .seq-badge { grid-column: 2; justify-self: start; margin-top: 0.35rem; }
+}
+
+footer {
+  padding: 2.5rem 0 3.5rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--f-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+
+<div class="masthead">
+  <div class="shell masthead-inner">
+    <div class="eyebrow">AgiBot D1 Max · Operator software · Design spec</div>
+    <h1>D1 Max Operator Console</h1>
+    <p class="thesis">
+      Inspection and security look like the same product — a robot walks a route
+      unattended — and building them as one UI makes both worse. They diverge on
+      the thing that actually matters: inspection lives or dies on
+      <em>pose repeatability</em>, security on <em>time&#8209;to&#8209;takeover</em>.
+    </p>
+
+    <div class="strip-demo">
+      <div class="astrip">
+        <span><span class="dot dot-ok"></span><b>YOU HOLD CONTROL</b></span>
+        <span>SPEED <b>LOW</b></span>
+        <span>MODE <b>GENERAL</b></span>
+        <span class="spacer">LINK <b>34 ms</b></span>
+        <span>BATT <b>78% / 74%</b></span>
+      </div>
+    </div>
+    <div class="strip-caption">
+      ↑ The authority strip. Present on every screen, because these four values are
+      what cause accidents when hidden.
+    </div>
+
+    <div class="masthead-meta">
+      <span>Derived from Protocol 1.2.0 + RobotSDK 0.1.1</span>
+      <span>Targets: Linux · Android · iOS</span>
+      <span>Companion to docs/dev/06</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<section>
+  <div class="shell">
+    <div class="sec-head">
+      <div class="eyebrow">The split</div>
+      <h2>Two products, one substrate</h2>
+      <p>
+        Maps, missions, waypoints, telemetry and the safety layer are shared.
+        Everything above them diverges. Build the substrate once and give each job
+        its own foreground.
+      </p>
+    </div>
+
+    <div class="split-wrap">
+      <table class="split">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="col-a">Inspection</th>
+            <th>Security</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>Trigger</th>
+            <td class="col-a">Scheduled, predictable</td>
+            <td>Event-driven, or deliberately randomised</td>
+          </tr>
+          <tr>
+            <th>Human watching?</th>
+            <td class="col-a">No — reviews afterwards</td>
+            <td>No — <em>responds</em> during</td>
+          </tr>
+          <tr>
+            <th>Deliverable</th>
+            <td class="col-a">A dataset comparable across runs</td>
+            <td>An alert, evidence, and a response</td>
+          </tr>
+          <tr>
+            <th>Critical metric</th>
+            <td class="col-a"><span class="hi">Pose repeatability</span></td>
+            <td><span class="hi">Time-to-takeover</span></td>
+          </tr>
+          <tr>
+            <th>Dominant failure</th>
+            <td class="col-a">Images that can't be compared</td>
+            <td>Event missed, or response too slow</td>
+          </tr>
+          <tr>
+            <th>Primary screen</th>
+            <td class="col-a">Findings diff</td>
+            <td>Takeover</td>
+          </tr>
+          <tr>
+            <th>Time budget</th>
+            <td class="col-a">3 s per waypoint reviewed</td>
+            <td>10 s from alert to hands-on</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section>
+  <div class="shell">
+    <div class="sec-head">
+      <div class="eyebrow">Design against the real loop</div>
+      <h2>What the operator actually does</h2>
+      <p>
+        Neither operator spends meaningful time watching a robot drive. A UI whose
+        centrepiece is a live map is optimised for the demo, not the job.
+      </p>
+    </div>
+
+    <div class="grid-2">
+      <div class="loop">
+        <div class="loop-head">
+          <h3>Inspection operator</h3>
+          <span class="when">MOST DAYS</span>
+        </div>
+        <ol>
+          <li>Morning: did the overnight runs finish?</li>
+          <li>Work the findings queue — ~60 waypoints, 5 minutes.</li>
+          <li>Escalate two or three items.</li>
+          <li>Occasionally re-record a waypoint whose framing drifted.</li>
+        </ol>
+        <div class="loop-foot">
+          ~95% of their time is spent in a <b>review queue</b>.
+        </div>
+      </div>
+
+      <div class="loop">
+        <div class="loop-head">
+          <h3>Security operator</h3>
+          <span class="when">MOST NIGHTS: NOTHING</span>
+        </div>
+        <ol>
+          <li>Alert at 03:00.</li>
+          <li>Phone in hand, half awake — see the clip.</li>
+          <li>Decide: real or not?</li>
+          <li>Take control, investigate, challenge over audio, dispatch.</li>
+          <li>Log the incident.</li>
+        </ol>
+        <div class="loop-foot">
+          Every tap between notification and hands-on is a <b>design failure</b>.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section>
+  <div class="shell">
+    <div class="sec-head">
+      <div class="eyebrow">Cross-cutting</div>
+      <h2>The safety furniture</h2>
+      <p>
+        These appear on every screen in the same place, always. Each exists because
+        of a specific platform behaviour that causes accidents.
+      </p>
+    </div>
+
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-tag">Authority strip</div>
+        <h3>Four values, always visible</h3>
+        <p>
+          The App can preempt you silently at any moment. The same stick deflection
+          is 1 m/s or 3 m/s depending on a speed level set ten minutes ago — and at
+          high speed, yaw authority is cut to a third. This is the most dangerous
+          hidden state on the platform.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card-tag">Two buttons, never one</div>
+        <h3>Abort ≠ E-stop</h3>
+        <p>
+          <b>Abort</b> is graceful — stop the mission, decelerate, hold position.
+          Routine, recoverable, wanted 95% of the time. <b>E-stop</b> is immediate:
+          the robot stops responding and lowers to the ground. Make them look
+          nothing alike.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card-tag">Hold-to-drive</div>
+        <h3>Don't defeat the dead-man</h3>
+        <p>
+          The protocol already expires every move command after one second. Mirror
+          it: sticks spring to centre, driving requires continuous contact. Never
+          build a cruise or latched-velocity mode — it throws away the one safety
+          property you get for free.
+        </p>
+      </div>
+    </div>
+
+    <div class="stack" style="margin-top:1.5rem">
+      <div class="callout">
+        <div class="eyebrow">Not the safety case</div>
+        <p>
+          The physical e-stop on the robot and the RC handset are the safety case.
+          The UI e-stop is a convenience, and the interface must not imply
+          otherwise.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section>
+  <div class="shell">
+    <div class="sec-head">
+      <div class="eyebrow">Layouts</div>
+      <h2>One thing is primary</h2>
+      <p>
+        The most common robot-UI mistake is a four-pane dashboard with video, map,
+        telemetry and controls all at 25% and all too small to use. Decide what's
+        primary per screen; everything else is a PIP the operator promotes with one
+        tap.
+      </p>
+    </div>
+
+    <div class="stack-lg">
+
+      <!-- ---------- TAKEOVER ---------- -->
+      <div class="wf-block">
+        <div class="device device-desktop">
+          <div class="screen">
+            <div class="astrip">
+              <span><span class="dot dot-warn"></span><b>APP HAS CONTROL</b></span>
+              <span>LOW</span>
+              <span>GENERAL</span>
+              <span class="spacer">⟲ 34 ms</span>
+              <span>🔋 78%</span>
+            </div>
+
+            <div class="vid" style="min-height:170px">
+              <div class="vid-scene">
+                <svg viewBox="0 0 320 170" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                  <!-- loading dock suggestion -->
+                  <path d="M0 128 L320 112 L320 170 L0 170 Z" fill="#131A21"/>
+                  <path d="M40 42 L120 40 L120 128 L40 130 Z" fill="#1A232B"/>
+                  <path d="M200 38 L286 41 L286 116 L200 120 Z" fill="#1A232B"/>
+                  <path d="M120 40 L200 38 L200 120 L120 128 Z" fill="#0F161C"/>
+                  <rect x="136" y="60" width="48" height="58" fill="#182028"/>
+                  <path d="M0 128 L320 112" stroke="#2B353F" stroke-width="1.5" fill="none"/>
+                  <circle cx="228" cy="30" r="9" fill="#D9A521" opacity=".22"/>
+                  <circle cx="228" cy="30" r="3.5" fill="#D9A521" opacity=".7"/>
+                  <!-- detected figure, boxed -->
+                  <g>
+                    <rect x="146" y="66" width="26" height="52" fill="none" stroke="#E2594B" stroke-width="1.4"/>
+                    <text x="146" y="63" fill="#E2594B" font-family="JetBrains Mono, monospace" font-size="6">PERSON 0.94</text>
+                    <circle cx="159" cy="78" r="4.6" fill="#39434D"/>
+                    <path d="M153 84 L165 84 L166 104 L152 104 Z" fill="#39434D"/>
+                  </g>
+                </svg>
+              </div>
+
+              <div class="minimap">
+                <svg viewBox="0 0 62 46" aria-hidden="true">
+                  <rect width="62" height="46" fill="#0D1116"/>
+                  <path d="M8 8 H50 V38 H8 Z" fill="none" stroke="#2B353F" stroke-width="1.2"/>
+                  <path d="M8 26 H30 V38" fill="none" stroke="#2B353F" stroke-width="1.2"/>
+                  <circle cx="38" cy="18" r="3" fill="#3FB6C1"/>
+                  <path d="M38 18 L44 14" stroke="#3FB6C1" stroke-width="1.2"/>
+                </svg>
+              </div>
+
+              <div class="vid-tag lat-warn" style="right:6px; top:6px;">GLASS→ 120 ms</div>
+              <div class="vid-tag" style="left:6px; bottom:6px;">CAM FRONT · LIGHTS OFF</div>
+              <div class="takeover-cta">▶ PAUSE MISSION &amp; TAKE CONTROL</div>
+            </div>
+
+            <div class="deck">
+              <div class="stick"><span>TRANSLATE</span></div>
+              <div class="deck-mid">
+                <div class="tool-row">
+                  <div class="tool">💡</div>
+                  <div class="tool on">📷</div>
+                  <div class="tool">🎙</div>
+                  <div class="tool">⏺</div>
+                </div>
+                <div class="safety-row">
+                  <div class="btn-abort">ABORT</div>
+                  <div class="btn-estop">E-STOP</div>
+                </div>
+              </div>
+              <div class="stick"><span>YAW</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="wf-notes">
+          <div class="eyebrow">Screen 01 · mobile, landscape</div>
+          <h3>Takeover</h3>
+          <p>
+            The security product, in one screen. Reached from a push notification in
+            a single tap, with video already connecting and control already
+            requested.
+          </p>
+          <ul>
+            <li>Landscape, two-thumb. Sticks sit in the bottom corners where thumbs rest.</li>
+            <li>Taking control mid-mission is <b>one action</b> that both pauses the mission and acquires control. Two steps here is the difference between a 4-second and a 20-second response.</li>
+            <li>The latency badge sits <em>on</em> the video, because that is where the operator's eyes already are. Degrade the speed cap when it goes amber.</li>
+            <li>Detection runs on the robot's Orin NX — the client receives boxes and alerts, never a raw sensor stream.</li>
+            <li>E-stop and abort are centre-bottom, reachable by either thumb, and deliberately unalike.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ---------- MISSION MONITOR ---------- -->
+      <div class="wf-block flip">
+        <div class="device device-portrait">
+          <div class="screen">
+            <div class="astrip">
+              <span><span class="dot dot-ok"></span><b>YOU</b></span>
+              <span>LOW</span>
+              <span class="spacer">⟲ 34 ms</span>
+              <span>78%</span>
+            </div>
+
+            <div class="mappanel">
+              <svg viewBox="0 0 284 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                <rect width="284" height="200" fill="#0D1116"/>
+                <!-- occupancy grid walls -->
+                <g stroke="#2B353F" stroke-width="2" fill="none">
+                  <path d="M26 22 H258 V178 H26 Z"/>
+                  <path d="M26 96 H128"/>
+                  <path d="M170 22 V96"/>
+                  <path d="M170 130 H258"/>
+                </g>
+                <g fill="#1A222A">
+                  <rect x="36" y="32" width="44" height="30"/>
+                  <rect x="196" y="40" width="46" height="38"/>
+                  <rect x="60" y="140" width="52" height="26"/>
+                </g>
+                <!-- no-go zone -->
+                <g>
+                  <rect x="196" y="140" width="52" height="28" fill="#E2594B" opacity=".13"/>
+                  <rect x="196" y="140" width="52" height="28" fill="none" stroke="#E2594B" stroke-width="1" stroke-dasharray="3 3" opacity=".7"/>
+                  <text x="199" y="157" fill="#E2594B" font-family="JetBrains Mono, monospace" font-size="6" opacity=".9">NO-GO</text>
+                </g>
+                <!-- route: done -> current -> pending -->
+                <path d="M48 78 L100 78 L100 118 L146 118" stroke="#46A96E" stroke-width="2.2" fill="none"/>
+                <path d="M146 118 L146 158 L232 158" stroke="#3FB6C1" stroke-width="2.2" fill="none"/>
+                <path d="M232 158 L232 108 L214 108" stroke="#4A5661" stroke-width="2" fill="none" stroke-dasharray="4 4"/>
+                <g fill="#46A96E">
+                  <circle cx="48" cy="78" r="4"/><circle cx="100" cy="78" r="4"/><circle cx="100" cy="118" r="4"/>
+                </g>
+                <circle cx="146" cy="118" r="5.5" fill="#3FB6C1"/>
+                <g fill="none" stroke="#4A5661" stroke-width="1.6">
+                  <circle cx="232" cy="158" r="4"/><circle cx="214" cy="108" r="4"/>
+                </g>
+                <!-- robot pose -->
+                <g transform="translate(176 148)">
+                  <circle r="7" fill="#3FB6C1" opacity=".18"/>
+                  <circle r="3.4" fill="#3FB6C1"/>
+                  <path d="M0 0 L13 6" stroke="#3FB6C1" stroke-width="1.6"/>
+                </g>
+              </svg>
+
+              <div class="vid-pip">
+                <div class="vid-tag">FRONT</div>
+              </div>
+            </div>
+
+            <div class="readout">
+              <div class="r1">Step 12 / 40 · Capture "Valve Array 3"</div>
+              <div class="r2">ETA 18 min · battery <b>−22% est.</b> · budget OK</div>
+            </div>
+
+            <div class="steps">
+              <div class="done">11 Transit</div>
+              <div class="now">12 Capture</div>
+              <div>13 Look</div>
+            </div>
+
+            <div class="deck" style="justify-content:center; gap:8px">
+              <div class="btn-abort">ABORT</div>
+              <div class="btn-estop">E-STOP</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="wf-notes">
+          <div class="eyebrow">Screen 02 · mobile, portrait</div>
+          <h3>Mission monitor</h3>
+          <p>
+            Map primary, video demoted to a PIP — the inverse of the takeover
+            screen, because here the question is <em>where</em>, not <em>what do I
+            see</em>.
+          </p>
+          <ul>
+            <li>Route coloured by status — done, current, pending — is the most legible progress indicator there is. It beats a percentage bar because it also answers "where".</li>
+            <li>The battery line shows <b>budget versus actual</b>, not just charge. A mission that won't fit should be caught before it starts, not at 80% complete.</li>
+            <li>Geofences are drawn here but enforced on the robot. A constraint that only exists in the client isn't a constraint.</li>
+            <li>Clients get the 2-D occupancy grid and a pose. Two 96-line LiDARs at 10 Hz will never fit down a phone link.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ---------- FINDINGS TRIAGE ---------- -->
+      <div class="wf-block">
+        <div class="device device-portrait">
+          <div class="screen">
+            <div class="triage-head">
+              <b>Valve Array 3</b>
+              <span>4 / 62</span>
+            </div>
+
+            <div class="wipe" id="wipe" role="slider" tabindex="0"
+                 aria-label="Wipe between reference and current capture"
+                 aria-valuemin="0" aria-valuemax="100" aria-valuenow="52">
+
+              <!-- REFERENCE -->
+              <svg viewBox="0 0 240 180" preserveAspectRatio="none" aria-hidden="true">
+                <rect width="240" height="180" fill="#111820"/>
+                <rect x="0" y="126" width="240" height="54" fill="#0C1116"/>
+                <!-- pipework -->
+                <rect x="18" y="72" width="204" height="20" fill="#2C3742"/>
+                <rect x="18" y="72" width="204" height="4" fill="#3A4652"/>
+                <rect x="96" y="30" width="20" height="42" fill="#2C3742"/>
+                <rect x="60" y="62" width="14" height="40" fill="#242E37"/>
+                <rect x="168" y="62" width="14" height="40" fill="#242E37"/>
+                <!-- flange bolts -->
+                <g fill="#4A5661">
+                  <circle cx="88" cy="82" r="2.6"/><circle cx="124" cy="82" r="2.6"/>
+                </g>
+                <!-- gauge -->
+                <circle cx="106" cy="26" r="15" fill="#1B242C" stroke="#4A5661" stroke-width="2"/>
+                <path d="M106 26 L98 17" stroke="#DDE4EA" stroke-width="2"/>
+                <circle cx="106" cy="26" r="2" fill="#DDE4EA"/>
+              </svg>
+
+              <!-- CURRENT: needle moved, stain under the flange -->
+              <svg class="layer-now" viewBox="0 0 240 180" preserveAspectRatio="none" aria-hidden="true">
+                <rect width="240" height="180" fill="#111820"/>
+                <rect x="0" y="126" width="240" height="54" fill="#0C1116"/>
+                <rect x="18" y="72" width="204" height="20" fill="#2C3742"/>
+                <rect x="18" y="72" width="204" height="4" fill="#3A4652"/>
+                <rect x="96" y="30" width="20" height="42" fill="#2C3742"/>
+                <rect x="60" y="62" width="14" height="40" fill="#242E37"/>
+                <rect x="168" y="62" width="14" height="40" fill="#242E37"/>
+                <g fill="#4A5661">
+                  <circle cx="88" cy="82" r="2.6"/><circle cx="124" cy="82" r="2.6"/>
+                </g>
+                <!-- the finding: streak + pooled stain -->
+                <path d="M104 92 L101 126 L114 126 L110 92 Z" fill="#5A4433" opacity=".85"/>
+                <ellipse cx="107" cy="132" rx="27" ry="7" fill="#4A3A2C" opacity=".9"/>
+                <ellipse cx="107" cy="131" rx="15" ry="3.6" fill="#6B5238" opacity=".8"/>
+                <!-- gauge, needle swung high -->
+                <circle cx="106" cy="26" r="15" fill="#1B242C" stroke="#4A5661" stroke-width="2"/>
+                <path d="M106 26 L117 19" stroke="#E2594B" stroke-width="2"/>
+                <circle cx="106" cy="26" r="2" fill="#DDE4EA"/>
+              </svg>
+
+              <div class="wipe-lab l">REFERENCE · 14 AUG</div>
+              <div class="wipe-lab r">CURRENT · 03:14</div>
+              <div class="wipe-handle" id="wipeHandle"></div>
+            </div>
+
+            <div class="triage-meta">
+              <div>03:14 · pose err <span class="pose-ok">4 cm ✓ comparable</span></div>
+              <div>lux 240 · lights ON · head 0.0° · cam FRONT</div>
+            </div>
+
+            <div class="triage-actions">
+              <div class="a-ok">✓ OK</div>
+              <div>⚑ FLAG</div>
+              <div class="a-esc">↑ ESCALATE</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="wf-notes">
+          <div class="eyebrow">Screen 03 · mobile, portrait · <span style="color:var(--accent)">drag the handle</span></div>
+          <h3>Findings triage</h3>
+          <p>
+            The inspection deliverable, and the screen the operator actually lives
+            in. Designed for three seconds per waypoint.
+          </p>
+          <ul>
+            <li><b>A wipe beats side-by-side.</b> For two photographs of the same physical scene, a draggable wipe catches changes that survive the sweep. Side-by-side forces saccades and misses small deltas — drag the handle and watch the gauge and the stain appear.</li>
+            <li>One waypoint at a time, full screen. Never a grid of thumbnails.</li>
+            <li>Three actions only. Swipe-right for OK, because that is the overwhelming majority.</li>
+            <li><b>Pose error is shown, always.</b> If the robot parked 40 cm off, the comparison is parallax, not a finding — and the operator must never be asked to judge it.</li>
+            <li>A history scrubber across the last N runs catches slow drift: corrosion, a settling crack, a tank emptying over weeks.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ---------- ALERT ---------- -->
+      <div class="wf-block flip">
+        <div class="device device-portrait">
+          <div class="screen">
+            <div class="alert-head">
+              <div class="t">⚠ PERSON DETECTED</div>
+              <div class="s">Loading Dock · Zone "Dock East" · 03:14:22</div>
+            </div>
+
+            <div class="clip">
+              <svg viewBox="0 0 284 178" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                <rect width="284" height="178" fill="#0F161C"/>
+                <path d="M0 132 L284 118 L284 178 L0 178 Z" fill="#141C23"/>
+                <rect x="30" y="44" width="76" height="88" fill="#1A232B"/>
+                <rect x="188" y="40" width="72" height="80" fill="#1A232B"/>
+                <circle cx="212" cy="28" r="8" fill="#D9A521" opacity=".2"/>
+                <g>
+                  <rect x="126" y="62" width="30" height="64" fill="none" stroke="#E2594B" stroke-width="1.5"/>
+                  <circle cx="141" cy="76" r="5.4" fill="#39434D"/>
+                  <path d="M134 83 L148 83 L149 110 L133 110 Z" fill="#39434D"/>
+                </g>
+              </svg>
+              <div class="clip-play">▶</div>
+              <div class="vid-tag" style="left:6px; bottom:6px;">−3 s / +3 s · 1080p</div>
+            </div>
+
+            <div class="alert-row">📍 map pin · 51.4922, −0.1104 (RTK fix) · evidence sealed</div>
+
+            <div class="alert-cta">TAKE CONTROL NOW ▶</div>
+
+            <div class="alert-sub">
+              <div>ACKNOWLEDGE</div>
+              <div>DISMISS</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="wf-notes">
+          <div class="eyebrow">Screen 04 · mobile, arrives as push</div>
+          <h3>Alert</h3>
+          <p>
+            The whole security product compressed into one card: what happened,
+            where, and a single control that puts hands on the robot.
+          </p>
+          <ul>
+            <li>A short pre/post clip, not a live stream. Nobody is watching a feed at 03:00, and you can't afford to ship one continuously anyway.</li>
+            <li>The 157 TOPS on the Orin NX exists for exactly this — person detection, zone motion, door state, thermal anomaly if fitted.</li>
+            <li>Evidence is written once and never edited: disciplined timestamps, map pose plus RTK global coordinates, an append-only incident log, exportable as a bundle.</li>
+            <li>Two-way audio from the takeover screen resolves a large share of incidents without dispatching anyone — capability-gated, since only some units carry a speaker.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ---------- DESKTOP ---------- -->
+      <div class="wf-block">
+        <div class="device device-desktop">
+          <div class="screen">
+            <div class="astrip">
+              <span><span class="dot dot-ok"></span><b>D1-02 "NIGHTSHIFT"</b></span>
+              <span>MISSION EDITOR</span>
+              <span class="spacer">MAP level2-2026-08-14</span>
+            </div>
+
+            <div class="dt">
+              <div class="dt-rail">
+                <div class="rh">FLEET</div>
+                <div class="ri on">D1-02 ●</div>
+                <div class="ri">D1-04 ●</div>
+                <div class="rh">VIEWS</div>
+                <div class="ri">Missions</div>
+                <div class="ri on">Editor</div>
+                <div class="ri">Findings</div>
+                <div class="ri">Alerts</div>
+                <div class="ri">Maps</div>
+                <div class="ri">Schedule</div>
+              </div>
+
+              <div class="dt-main">
+                <svg viewBox="0 0 470 262" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                  <rect width="470" height="262" fill="#0D1116"/>
+                  <!-- grid -->
+                  <g stroke="#161E26" stroke-width="1">
+                    <path d="M0 40 H470 M0 90 H470 M0 140 H470 M0 190 H470 M0 240 H470"/>
+                    <path d="M50 0 V262 M110 0 V262 M170 0 V262 M230 0 V262 M290 0 V262 M350 0 V262 M410 0 V262"/>
+                  </g>
+                  <!-- building -->
+                  <g stroke="#2E3A45" stroke-width="2.5" fill="none">
+                    <path d="M40 28 H430 V232 H40 Z"/>
+                    <path d="M40 122 H196"/>
+                    <path d="M262 28 V122"/>
+                    <path d="M262 176 H430"/>
+                  </g>
+                  <g fill="#171F27">
+                    <rect x="54" y="42" width="72" height="46"/>
+                    <rect x="300" y="48" width="80" height="58"/>
+                    <rect x="80" y="180" width="86" height="38"/>
+                  </g>
+                  <!-- low-confidence (glass) region -->
+                  <g>
+                    <rect x="196" y="28" width="66" height="94" fill="#D9A521" opacity=".10"/>
+                    <rect x="196" y="28" width="66" height="94" fill="none" stroke="#D9A521" stroke-width="1.2" stroke-dasharray="4 4" opacity=".65"/>
+                    <text x="202" y="44" fill="#D9A521" font-family="JetBrains Mono, monospace" font-size="7.5" opacity=".95">GLASS · SLOW</text>
+                  </g>
+                  <!-- no-go -->
+                  <g>
+                    <rect x="330" y="188" width="86" height="34" fill="#E2594B" opacity=".12"/>
+                    <rect x="330" y="188" width="86" height="34" fill="none" stroke="#E2594B" stroke-width="1.2" stroke-dasharray="4 4" opacity=".65"/>
+                    <text x="336" y="209" fill="#E2594B" font-family="JetBrains Mono, monospace" font-size="7.5">NO-GO</text>
+                  </g>
+                  <!-- route -->
+                  <path d="M78 100 L156 100 L156 152 L228 152 L228 208 L300 208 L300 152 L392 152 L392 78"
+                        stroke="#3FB6C1" stroke-width="2.4" fill="none" stroke-linejoin="round"/>
+                  <!-- waypoints: capture nodes filled, transit hollow -->
+                  <g>
+                    <circle cx="78"  cy="100" r="6" fill="#3FB6C1"/>
+                    <circle cx="156" cy="152" r="4.5" fill="none" stroke="#4A5661" stroke-width="2"/>
+                    <circle cx="228" cy="208" r="6" fill="#3FB6C1"/>
+                    <circle cx="300" cy="152" r="4.5" fill="none" stroke="#4A5661" stroke-width="2"/>
+                    <circle cx="392" cy="78"  r="6" fill="#3FB6C1"/>
+                  </g>
+                  <!-- selected waypoint, with heading + capture cone -->
+                  <g transform="translate(228 208)">
+                    <circle r="13" fill="none" stroke="#3FB6C1" stroke-width="1.4" opacity=".55"/>
+                    <path d="M0 0 L36 -17 L36 17 Z" fill="#3FB6C1" opacity=".16"/>
+                    <path d="M0 0 L30 0" stroke="#3FB6C1" stroke-width="1.6"/>
+                  </g>
+                  <!-- dock -->
+                  <g transform="translate(392 78)">
+                    <rect x="-9" y="-9" width="18" height="18" fill="none" stroke="#46A96E" stroke-width="1.6"/>
+                    <text x="-8" y="-14" fill="#46A96E" font-family="JetBrains Mono, monospace" font-size="7">DOCK</text>
+                  </g>
+                </svg>
+              </div>
+
+              <div class="dt-right">
+                <div class="h">WAYPOINTS · 5</div>
+                <div class="wp cap"><span class="n">1</span><span class="lab">Dock exit</span><span class="k">CAP</span></div>
+                <div class="wp"><span class="n">2</span><span class="lab">Corridor N</span><span class="k">TRN</span></div>
+                <div class="wp cap"><span class="n">3</span><span class="lab">Valve Array 3</span><span class="k">CAP</span></div>
+                <div class="wp"><span class="n">4</span><span class="lab">Stair head</span><span class="k">STR</span></div>
+                <div class="wp cap"><span class="n">5</span><span class="lab">Return dock</span><span class="k">CAP</span></div>
+                <div class="h" style="margin-top:.3rem">STEP 3 · CAPTURE</div>
+                <div class="wp"><span class="lab">tolerance</span><span class="k">6 cm</span></div>
+                <div class="wp"><span class="lab">lights</span><span class="k">AT-CAP</span></div>
+                <div class="wp"><span class="lab">head</span><span class="k">0.0°</span></div>
+                <div class="wp"><span class="lab">dwell</span><span class="k">5 s</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="wf-notes">
+          <div class="eyebrow">Screen 05 · desktop</div>
+          <h3>Mission editor &amp; map</h3>
+          <p>
+            Desktop earns its screen area on what mobile does badly: authoring on a
+            map, reviewing findings at scale, and managing the map itself.
+          </p>
+          <ul>
+            <li><b>Capture waypoints get a tighter tolerance than transit</b> — 6 cm versus 25 cm. That single requirement propagates all the way back into the localisation and controller work.</li>
+            <li>The selected waypoint shows its heading and capture cone, because framing is what makes run N+1 comparable to run N.</li>
+            <li>Low-confidence regions are a first-class map object. LiDAR does not see glass, and glazed partitions are everywhere in exactly the lobbies security patrols cover.</li>
+            <li>Per-step properties carry the whole observation state: lights, head angle, dwell, camera, mode.</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section>
+  <div class="shell">
+    <div class="sec-head">
+      <div class="eyebrow">Authoring</div>
+      <h2>Record-by-driving is the feature to build first</h2>
+      <p class="lede">
+        The operator teleops the robot along the route and drops waypoints at the
+        current pose. It needs no map-reading skill, every waypoint is provably
+        reachable <em>because the robot just reached it</em>, and the operator frames
+        each shot with their own eyes.
+      </p>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-tag">On drop, capture everything</div>
+        <h3>The full observation state</h3>
+        <p>
+          Pose and map, head pan/tilt, camera and head/tail orientation, fill-light
+          state, ambient lux, speed level and mode on approach — and the reference
+          image itself, shot now, framed deliberately. Every future run is compared
+          against it; everything else exists to reproduce the conditions it was taken
+          under.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-tag">Platform affordances worth exposing</div>
+        <h3>Things a generic AMR UI wouldn't offer</h3>
+        <p>
+          <b>Head/tail reversal</b> — reverse out of a dead-end rather than
+          three-point-turning. <b>Stair mode</b> for multi-floor routes.
+          <b>Slim</b> for 50 cm gaps, <b>climb</b> for platforms, <b>crawl</b> for low
+          clearance. And <b>dark patrol</b>: LiDAR needs no light, so lamps become a
+          tactical choice rather than a necessity.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section>
+  <div class="shell">
+    <div class="sec-head">
+      <div class="eyebrow">Scope discipline</div>
+      <h2>What not to build</h2>
+    </div>
+
+    <div class="dont">
+      <div class="dont-row">
+        <span class="x">✕</span>
+        <div>
+          <b>Full mission-graph editing on a phone</b>
+          <p>Record-by-driving covers the mobile case entirely. Complex editing belongs on desktop.</p>
+        </div>
+      </div>
+      <div class="dont-row">
+        <span class="x">✕</span>
+        <div>
+          <b>Point clouds streamed to a client</b>
+          <p>Two 96-line LiDARs at 10 Hz will not fit down a phone link. Clients get the 2-D grid and a pose.</p>
+        </div>
+      </div>
+      <div class="dont-row">
+        <span class="x">✕</span>
+        <div>
+          <b>A 3-D map view as the primary navigation UI</b>
+          <p>It demos beautifully and is harder to read than a 2-D grid. Offer it as an inspection tool, not the default.</p>
+        </div>
+      </div>
+      <div class="dont-row">
+        <span class="x">✕</span>
+        <div>
+          <b>Auto-take-control on connect</b>
+          <p>Always an explicit operator action, and always show who currently holds control.</p>
+        </div>
+      </div>
+      <div class="dont-row">
+        <span class="x">✕</span>
+        <div>
+          <b>Cruise or latched velocity</b>
+          <p>Defeats the one-second dead-man the protocol gives you for free.</p>
+        </div>
+      </div>
+      <div class="dont-row">
+        <span class="x">✕</span>
+        <div>
+          <b>A unified inspection + security dashboard</b>
+          <p>The two jobs want different foregrounds. Forcing one screen makes both worse.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section>
+  <div class="shell">
+    <div class="sec-head">
+      <div class="eyebrow">Sequence</div>
+      <h2>Build order</h2>
+      <p>Steps 1–5 are a complete inspection product. Step 6 is most of a security one.</p>
+    </div>
+
+    <div class="seq">
+      <div class="seq-row">
+        <span class="seq-n">01</span>
+        <div>
+          <b>Safety furniture</b>
+          <p>Authority strip, e-stop, abort, hold-to-drive. Nothing ships without these.</p>
+        </div>
+        <span class="seq-badge">Shared</span>
+      </div>
+      <div class="seq-row">
+        <span class="seq-n">02</span>
+        <div>
+          <b>Takeover screen</b>
+          <p>Video, teleop, latency. Doubles as your protocol test-bed.</p>
+        </div>
+        <span class="seq-badge">Shared</span>
+      </div>
+      <div class="seq-row">
+        <span class="seq-n">03</span>
+        <div>
+          <b>Record-by-driving authoring</b>
+          <p>Unlocks real missions and needs no map editor to exist yet.</p>
+        </div>
+        <span class="seq-badge insp">Inspection</span>
+      </div>
+      <div class="seq-row">
+        <span class="seq-n">04</span>
+        <div>
+          <b>Mission monitor</b>
+          <p>Run and watch what you authored. Route-coloured progress, budget check.</p>
+        </div>
+        <span class="seq-badge insp">Inspection</span>
+      </div>
+      <div class="seq-row">
+        <span class="seq-n">05</span>
+        <div>
+          <b>Findings triage</b>
+          <p>The deliverable. Wipe comparator, three actions, pose error always shown.</p>
+        </div>
+        <span class="seq-badge insp">Inspection</span>
+      </div>
+      <div class="seq-row">
+        <span class="seq-n">06</span>
+        <div>
+          <b>Alerts + one-tap takeover</b>
+          <p>On-robot detection, evidence handling, deep link straight to hands-on.</p>
+        </div>
+        <span class="seq-badge sec">Security</span>
+      </div>
+      <div class="seq-row">
+        <span class="seq-n">07</span>
+        <div>
+          <b>Desktop review and scheduling</b>
+          <p>Findings at scale, trend charts, geofences, randomised patrol windows.</p>
+        </div>
+        <span class="seq-badge">Shared</span>
+      </div>
+      <div class="seq-row">
+        <span class="seq-n">08</span>
+        <div>
+          <b>Fleet</b>
+          <p>Only once one robot works end to end.</p>
+        </div>
+        <span class="seq-badge">Shared</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="shell" style="display:flex; flex-wrap:wrap; gap:.5rem 1.75rem; padding-left:0; padding-right:0;">
+    <span>docs/dev/06-inspection-security-ux.md</span>
+    <span>Companion docs: 01 architecture · 02 protocol · 03 SLAM · 04 clients · 05 missions</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var wipe = document.getElementById('wipe');
+  if (!wipe) return;
+
+  function setPct(pct) {
+    pct = Math.max(0, Math.min(100, pct));
+    wipe.style.setProperty('--wipe', pct.toFixed(1) + '%');
+    wipe.setAttribute('aria-valuenow', Math.round(pct));
+  }
+
+  function fromEvent(e) {
+    var rect = wipe.getBoundingClientRect();
+    var x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    setPct((x / rect.width) * 100);
+  }
+
+  var dragging = false;
+
+  wipe.addEventListener('pointerdown', function (e) {
+    dragging = true;
+    wipe.setPointerCapture(e.pointerId);
+    fromEvent(e);
+  });
+
+  wipe.addEventListener('pointermove', function (e) {
+    if (dragging) fromEvent(e);
+  });
+
+  ['pointerup', 'pointercancel'].forEach(function (evt) {
+    wipe.addEventListener(evt, function () { dragging = false; });
+  });
+
+  wipe.addEventListener('keydown', function (e) {
+    var cur = parseFloat(wipe.getAttribute('aria-valuenow')) || 52;
+    if (e.key === 'ArrowLeft')  { setPct(cur - 4); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { setPct(cur + 4); e.preventDefault(); }
+  });
+})();
+</script>
