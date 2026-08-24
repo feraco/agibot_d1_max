@@ -63,9 +63,41 @@ def sh(cmd: list[str], timeout: float = 6.0) -> tuple[int, str]:
         return 124, "timed out"
 
 
+def os_release() -> dict:
+    """Parse /etc/os-release. Empty dict on anything that isn't Linux."""
+    info = {}
+    try:
+        with open("/etc/os-release") as fh:
+            for line in fh:
+                k, _, v = line.strip().partition("=")
+                if k:
+                    info[k] = v.strip('"')
+    except OSError:
+        pass
+    return info
+
+
+# ROS 2 distro that ships with each Ubuntu release.
+DISTRO_FOR_UBUNTU = {"22.04": "humble", "24.04": "jazzy", "20.04": "foxy"}
+ROBOT_DISTRO = "humble"
+
+
 def check_env(verbose: bool = True) -> dict:
     """Diagnose the ROS 2 side without assuming any of it is present."""
     out: dict = {}
+
+    rel = os_release()
+    out["os_name"] = rel.get("PRETTY_NAME", "unknown")
+    out["ubuntu_version"] = rel.get("VERSION_ID", "")
+    out["expected_distro"] = DISTRO_FOR_UBUNTU.get(out["ubuntu_version"], "")
+    out["ros_installed"] = sorted(
+        d for d in (os.listdir("/opt/ros") if os.path.isdir("/opt/ros") else [])
+        if os.path.isdir(os.path.join("/opt/ros", d)))
+
+    # conda's python shadows the system one and ROS 2 packages then fail to
+    # import -- an extremely common and confusing failure.
+    out["conda"] = os.environ.get("CONDA_DEFAULT_ENV") or ""
+    out["conda_python"] = "conda" in sys.executable or "anaconda" in sys.executable
 
     out["ros_distro"] = os.environ.get("ROS_DISTRO") or ""
     out["domain_id"] = os.environ.get("ROS_DOMAIN_ID") or ""
@@ -92,8 +124,23 @@ def check_env(verbose: bool = True) -> dict:
     out["odom_ok"] = "/odom" in topics
 
     issues = []
-    if not out["ros2_cli"]:
-        issues.append("ros2 CLI not on PATH — source /opt/ros/humble/setup.bash")
+    if not out["ros_installed"]:
+        want = out["expected_distro"] or ROBOT_DISTRO
+        issues.append(f"ROS 2 is not installed (/opt/ros is empty or missing). "
+                      f"Run: python3 tools/d1max_slam.py install")
+        if out["ubuntu_version"] and want != ROBOT_DISTRO:
+            issues.append(
+                f"Ubuntu {out['ubuntu_version']} ships ROS 2 {want}, but the robot "
+                f"runs {ROBOT_DISTRO}. Mixing distros over Zenoh is not reliable — "
+                f"prefer Ubuntu 22.04, a container, or run the bridge on the Orin NX.")
+    elif not out["ros2_cli"]:
+        d = out["ros_installed"][0]
+        issues.append(f"ros2 CLI not on PATH — source /opt/ros/{d}/setup.bash")
+
+    if out["conda_python"] or out["conda"]:
+        issues.append(f"conda env '{out['conda'] or 'base'}' is active; its Python "
+                      "shadows the system one and ROS 2 imports will fail. "
+                      "Run: conda deactivate")
     if out["domain_id"] != "24":
         issues.append(f"ROS_DOMAIN_ID is {out['domain_id'] or 'unset'}, robot uses 24")
     if out["rmw"] != "rmw_zenoh_cpp":
@@ -106,7 +153,13 @@ def check_env(verbose: bool = True) -> dict:
     out["ready"] = out["ros2_cli"] and out["lidar_ok"] and out["odom_ok"]
 
     if verbose:
-        print("ROS 2 environment")
+        print("System")
+        print(f"  OS                {out['os_name']}")
+        print(f"  ROS 2 installed   {', '.join(out['ros_installed']) or 'NONE'}"
+              f"   (robot uses {ROBOT_DISTRO})")
+        if out["conda"] or out["conda_python"]:
+            print(f"  conda env         {out['conda'] or '(unnamed)'}  <-- deactivate it")
+        print("\nROS 2 environment")
         print(f"  distro            {out['ros_distro'] or '—'}")
         print(f"  ROS_DOMAIN_ID     {out['domain_id'] or '—'}   (robot uses 24)")
         print(f"  RMW               {out['rmw'] or '—'}   (robot uses rmw_zenoh_cpp)")
@@ -369,6 +422,60 @@ def save_map(name: str, pcd: str | None, res: float, z_min: float, z_max: float,
 
 
 # ======================================================================= CLI
+def cmd_install(args) -> int:
+    """Print the exact install steps for this machine. Prints, never runs --
+    installing a distro is your call, not a side effect of a diagnostic."""
+    env = check_env(verbose=False)
+    ver = env["ubuntu_version"]
+    want = env["expected_distro"]
+
+    print(f"Detected: {env['os_name']}")
+    print(f"Robot runs ROS 2 {ROBOT_DISTRO} (Ubuntu 22.04).\n")
+
+    if env["conda"] or env["conda_python"]:
+        print("FIRST — leave conda. Its Python breaks ROS 2 imports:\n")
+        print("    conda deactivate")
+        print("    # to stop it auto-activating in new shells:")
+        print("    conda config --set auto_activate_base false\n")
+
+    if ver and ver != "22.04":
+        print(f"! Ubuntu {ver} cannot install {ROBOT_DISTRO} from apt.")
+        print(f"  Its native distro is {want or 'unknown'}, and mixing distros")
+        print("  across Zenoh is not reliable. Pick one:\n")
+        print("  a) Run mapping on the Orin NX itself (it already has Humble):")
+        print("       ssh robot@192.168.168.100      # password: 1")
+        print("     then copy tools/ across and run the bridge there.\n")
+        print("  b) Use a container on this machine:")
+        print("       sudo apt install -y docker.io")
+        print("       sudo docker run -it --net=host --rm ros:humble bash\n")
+        print("  c) Install Ubuntu 22.04 (dual boot or VM).\n")
+        print("  You do NOT need any of this for missions — those work now.")
+        return 0
+
+    print("Install ROS 2 Humble:\n")
+    print("    sudo apt update && sudo apt install -y software-properties-common curl")
+    print("    sudo add-apt-repository universe -y")
+    print("    sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \\")
+    print("         -o /usr/share/keyrings/ros-archive-keyring.gpg")
+    print('    echo "deb [arch=$(dpkg --print-architecture) '
+          'signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] '
+          'http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" \\')
+    print("         | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null")
+    print("    sudo apt update")
+    print("    sudo apt install -y ros-humble-desktop ros-humble-rmw-zenoh-cpp \\")
+    print("         ros-dev-tools python3-colcon-common-extensions\n")
+    print("Then, in every terminal that talks to the robot:\n")
+    print("    conda deactivate")
+    print("    source /opt/ros/humble/setup.bash")
+    print("    export ROS_DOMAIN_ID=24")
+    print("    export RMW_IMPLEMENTATION=rmw_zenoh_cpp\n")
+    print("Point Zenoh at the robot — edit this file's connect/endpoints:")
+    print("    /opt/ros/humble/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5")
+    print('    → "tcp/192.168.168.100:7447"\n')
+    print("Verify:  python3 tools/d1max_slam.py check")
+    return 0
+
+
 def cmd_record(args) -> int:
     env = check_env(verbose=False)
     if not env["ros2_cli"]:
@@ -430,6 +537,7 @@ def main() -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("check", help="diagnose the ROS 2 mapping environment")
+    sub.add_parser("install", help="print the ROS 2 install steps for this machine")
 
     r = sub.add_parser("record", help="ros2 bag the topics needed for mapping")
     r.add_argument("--name", required=True)
@@ -456,7 +564,7 @@ def main() -> int:
     args = ap.parse_args()
     if args.cmd == "check":
         return 0 if check_env()["ready"] else 2
-    return {"record": cmd_record, "save": cmd_save,
+    return {"install": cmd_install, "record": cmd_record, "save": cmd_save,
             "grid": cmd_grid, "list": cmd_list}[args.cmd](args)
 
 
