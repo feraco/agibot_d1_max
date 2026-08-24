@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>D1 Max Console</title>
+<style>
+:root{
+  --bg:#0D1116; --panel:#161C23; --panel2:#1E262F; --line:#2B353F;
+  --ink:#DDE4EA; --muted:#78848F;
+  --teal:#3FB6C1; --ok:#46A96E; --warn:#D9A521; --crit:#E2594B;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:var(--mono);font-size:13px;line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  overscroll-behavior:none;
+}
+button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer;
+  background:var(--panel2);border:1px solid var(--line);border-radius:4px;
+  padding:8px 10px;transition:border-color .12s,background .12s}
+button:hover:not(:disabled){border-color:var(--teal)}
+button:disabled{opacity:.32;cursor:not-allowed}
+button:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+input{font-family:inherit;font-size:inherit;background:var(--bg);color:var(--ink);
+  border:1px solid var(--line);border-radius:4px;padding:7px 8px}
+input:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
+
+/* ---------- authority strip ---------- */
+.strip{
+  position:sticky;top:0;z-index:20;
+  display:flex;align-items:center;flex-wrap:wrap;gap:4px 18px;
+  background:var(--panel);border-bottom:1px solid var(--line);
+  padding:9px 14px;font-size:11px;letter-spacing:.04em;color:var(--muted);
+  padding-top:max(9px,env(safe-area-inset-top));
+}
+.strip b{color:var(--ink);font-weight:500}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.d-ok{background:var(--ok);box-shadow:0 0 0 3px rgba(70,169,110,.22)}
+.d-warn{background:var(--warn);box-shadow:0 0 0 3px rgba(217,165,33,.22)}
+.d-crit{background:var(--crit);box-shadow:0 0 0 3px rgba(226,89,75,.22)}
+.d-off{background:#48535D}
+.strip .sp{margin-left:auto}
+
+/* ---------- banner ---------- */
+.banner{display:none;padding:10px 14px;font-size:12px;letter-spacing:.03em;
+  border-bottom:1px solid var(--line);text-align:center;font-weight:700}
+.banner.on{display:block}
+.banner.crit{background:rgba(226,89,75,.18);color:var(--crit);
+  border-bottom-color:rgba(226,89,75,.45)}
+.banner.warn{background:rgba(217,165,33,.15);color:var(--warn);
+  border-bottom-color:rgba(217,165,33,.4)}
+
+/* ---------- layout ---------- */
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;padding:14px;
+  align-items:start}
+@media(max-width:900px){.wrap{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.card > h2{
+  margin:0;padding:9px 12px;font-size:10px;font-weight:500;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);
+  background:var(--panel2);border-bottom:1px solid var(--line)}
+.card .body{padding:12px;display:flex;flex-direction:column;gap:10px}
+
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.grid{display:grid;gap:8px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.lbl{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+
+button.on{border-color:var(--teal);background:rgba(63,182,193,.16);color:var(--teal)}
+button.sm{padding:6px 8px;font-size:11px}
+
+/* ---------- drive pad ---------- */
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:280px}
+.pad button{aspect-ratio:1;display:grid;place-items:center;font-size:16px;
+  touch-action:none;user-select:none;-webkit-user-select:none}
+.pad button.held{border-color:var(--teal);background:rgba(63,182,193,.28);color:var(--teal)}
+.pad .blank{visibility:hidden}
+
+.vbar{height:5px;background:var(--bg);border:1px solid var(--line);border-radius:99px;
+  overflow:hidden;position:relative}
+.vbar i{position:absolute;top:0;bottom:0;left:50%;background:var(--teal);transition:none}
+
+/* ---------- safety ---------- */
+.safety{display:flex;gap:10px;align-items:center;padding:12px;
+  border-top:1px solid var(--line);background:var(--panel2)}
+/* On a phone the safety controls must never scroll out of reach. */
+@media(max-width:900px){
+  .safety{position:fixed;left:0;right:0;bottom:0;z-index:30;
+    border-top:1px solid var(--line);
+    padding-bottom:max(12px,env(safe-area-inset-bottom));
+    box-shadow:0 -6px 20px rgba(0,0,0,.45)}
+  body{padding-bottom:84px}
+  .pad button{font-size:20px}
+  .pad{max-width:none}
+}
+.btn-abort{flex:1;padding:13px;font-weight:700;letter-spacing:.1em;font-size:12px}
+.btn-estop{flex:1.3;padding:13px;font-weight:700;letter-spacing:.1em;font-size:12px;
+  background:var(--crit);border-color:var(--crit);color:#2A0B07;
+  box-shadow:0 0 0 3px rgba(226,89,75,.18)}
+.btn-estop:hover:not(:disabled){border-color:#fff}
+.btn-estop.clear{background:var(--panel2);color:var(--warn);border-color:var(--warn);
+  box-shadow:none}
+
+/* ---------- telemetry ---------- */
+table.kv{width:100%;border-collapse:collapse;font-size:11.5px}
+table.kv td{padding:3px 0;vertical-align:top}
+table.kv td:first-child{color:var(--muted);width:44%}
+table.kv td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.warnv{color:var(--warn)} .critv{color:var(--crit)} .okv{color:var(--ok)}
+
+.temps{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;font-size:10px}
+.temps div{background:var(--bg);border:1px solid var(--line);border-radius:3px;
+  padding:3px 2px;text-align:center;font-variant-numeric:tabular-nums}
+.temps div span{display:block;color:var(--muted);font-size:8.5px;letter-spacing:.06em}
+
+/* ---------- log ---------- */
+#log{height:230px;overflow-y:auto;background:var(--bg);font-size:11px;
+  padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+#log div{display:flex;gap:8px;align-items:baseline}
+#log .t{color:#4E5A65;flex:none}
+#log .tag{flex:none;width:26px}
+#log .msg{flex:none;min-width:96px;overflow-wrap:anywhere}
+#log .det{flex:1;min-width:0;color:var(--muted);overflow-wrap:anywhere}
+.tx .tag{color:var(--teal)} .rx .tag{color:var(--ok)} .sys .tag{color:var(--warn)}
+#log .msg{color:var(--ink)}
+#log .lvl-err .msg{color:var(--crit)}
+
+.hint{font-size:11px;color:var(--muted);line-height:1.55}
+kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;
+  padding:1px 5px;font-size:10px;color:var(--ink)}
+</style>
+</head>
+<body>
+
+<div class="strip">
+  <span id="s-ctrl"><span class="dot d-off"></span><b>DISCONNECTED</b></span>
+  <span>SPEED <b id="s-speed">—</b></span>
+  <span>MODE <b id="s-mode">—</b></span>
+  <span>STATUS <b id="s-motion">—</b></span>
+  <span class="sp">LINK <b id="s-rtt">—</b></span>
+  <span>BATT <b id="s-batt">—</b></span>
+</div>
+
+<div class="banner crit" id="ban-crit"></div>
+<div class="banner warn" id="ban-warn"></div>
+
+<div class="wrap">
+  <!-- ============ LEFT ============ -->
+  <div class="col">
+
+    <div class="card">
+      <h2>Connection</h2>
+      <div class="body">
+        <div class="row">
+          <input id="host" value="192.168.234.1" size="15" aria-label="Robot host">
+          <input id="port" value="8082" size="5" aria-label="Robot UDP port">
+          <button id="btn-conn">CONNECT</button>
+          <button id="btn-disc" disabled>DISCONNECT</button>
+        </div>
+        <div class="hint" id="hs">
+          Wi-Fi AP <b>192.168.234.1</b> · wired <b>192.168.168.168</b> · UDP port 8082.
+          Close the RC app first, or it keeps control.
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Drive — hold to move</h2>
+      <div class="body">
+        <div class="row" style="gap:22px;align-items:flex-start">
+          <div>
+            <div class="lbl" style="margin-bottom:6px">Translate</div>
+            <div class="pad">
+              <span class="blank"></span>
+              <button data-drive="lx" data-val="1"  title="Forward">▲</button>
+              <span class="blank"></span>
+              <button data-drive="ly" data-val="1"  title="Strafe left">◀</button>
+              <span class="blank"></span>
+              <button data-drive="ly" data-val="-1" title="Strafe right">▶</button>
+              <span class="blank"></span>
+              <button data-drive="lx" data-val="-1" title="Back">▼</button>
+              <span class="blank"></span>
+            </div>
+          </div>
+          <div>
+            <div class="lbl" style="margin-bottom:6px">Yaw / head</div>
+            <div class="pad" style="grid-template-columns:repeat(2,1fr);max-width:140px">
+              <button data-drive="rx" data-val="1"  title="Rotate left (in-place: look left)">↺</button>
+              <button data-drive="rx" data-val="-1" title="Rotate right (in-place: look right)">↻</button>
+              <button data-drive="ry" data-val="1"  title="In-place: look up">⌃</button>
+              <button data-drive="ry" data-val="-1" title="In-place: look down">⌄</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid g4" style="align-items:center">
+          <span class="lbl">Gain <b id="gain-v" style="color:var(--teal)">0.20</b></span>
+          <button class="sm" data-gain="0.1">0.10</button>
+          <button class="sm on" data-gain="0.2">0.20</button>
+          <button class="sm" data-gain="0.4">0.40</button>
+        </div>
+
+        <div class="grid g2">
+          <div><div class="lbl">lx fwd <span id="v-lx">0.00</span></div><div class="vbar"><i id="b-lx"></i></div></div>
+          <div><div class="lbl">rx yaw <span id="v-rx">0.00</span></div><div class="vbar"><i id="b-rx"></i></div></div>
+        </div>
+
+        <div class="hint">
+          <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> translate ·
+          <kbd>Q</kbd><kbd>E</kbd> yaw · <kbd>Space</kbd> stop ·
+          <kbd>Esc</kbd> e-stop. Release to stop — commands expire after 1 s by
+          design, and the watchdog zeroes the setpoint after 350 ms of silence.
+        </div>
+      </div>
+      <div class="safety">
+        <button class="btn-abort" id="btn-stop">STOP</button>
+        <button class="btn-estop" id="btn-estop">E-STOP</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Commands</h2>
+      <div class="body">
+        <div class="lbl">Control ownership</div>
+        <div class="grid g2">
+          <button data-post="/api/take_control">TAKE CONTROL</button>
+          <button data-post="/api/release_control">RELEASE</button>
+        </div>
+
+        <div class="lbl">Posture</div>
+        <div class="grid g4">
+          <button data-cmd="action/stand_up">Stand</button>
+          <button data-cmd="action/crawl">Crawl</button>
+          <button data-cmd="action/lie_down">Lie</button>
+          <button data-cmd="action/locked">Lock</button>
+          <button data-cmd="action/gait_walk">Gait</button>
+          <button data-cmd="action/slim">Slim</button>
+          <button data-cmd="action/climb">Climb</button>
+          <button data-cmd="action/dsb">DSB</button>
+        </div>
+
+        <div class="lbl">Mode</div>
+        <div class="grid g4">
+          <button data-cmd="mode/general">General</button>
+          <button data-cmd="mode/in_place">In-place</button>
+          <button data-cmd="mode/stair">Stair</button>
+          <button data-cmd="reverse_head_tail">Rev H/T</button>
+        </div>
+
+        <div class="lbl">Speed level — pin it before driving</div>
+        <div class="grid g3">
+          <button data-cmd="speed/low">Low · 1 m/s</button>
+          <button data-cmd="speed/medium">Med · 2 m/s</button>
+          <button data-cmd="speed/high">High · 3 m/s</button>
+        </div>
+
+        <div class="lbl">Lights</div>
+        <div class="grid g3">
+          <button id="l-front">Front</button>
+          <button id="l-back">Back</button>
+          <button id="l-auto">Auto</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ RIGHT ============ -->
+  <div class="col">
+    <div class="card">
+      <h2>Telemetry</h2>
+      <div class="body">
+        <table class="kv"><tbody id="tel"></tbody></table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Joint temperatures</h2>
+      <div class="body"><div class="temps" id="temps"></div></div>
+    </div>
+
+    <div class="card">
+      <h2>Faults</h2>
+      <div class="body"><div id="faults" class="hint">None reported.</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Frame log</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const $ = id => document.getElementById(id);
+const post = (url, body) =>
+  fetch(url, {method:"POST", headers:{"Content-Type":"application/json"},
+              body: JSON.stringify(body || {})})
+    .then(r => r.json()).catch(e => ({ok:false, error:String(e)}));
+
+let connected = false;
+let estopActive = false;
+let gain = 0.2;
+
+/* ---------------- drive: the setpoint is published, never latched ------- */
+const keysHeld = new Set();
+const sp = {lx:0, ly:0, rx:0, ry:0};
+let lastSent = "";
+
+function recompute(){
+  const axes = {lx:0, ly:0, rx:0, ry:0};
+  for (const k of keysHeld){
+    const [axis, val] = k.split(":");
+    axes[axis] += parseFloat(val);
+  }
+  for (const a of ["lx","ly","rx","ry"]){
+    sp[a] = Math.max(-1, Math.min(1, axes[a])) * gain;
+  }
+  paintSetpoint();
+}
+
+function paintSetpoint(){
+  $("v-lx").textContent = sp.lx.toFixed(2);
+  $("v-rx").textContent = sp.rx.toFixed(2);
+  for (const [axis, el] of [["lx","b-lx"], ["rx","b-rx"]]){
+    const v = sp[axis], bar = $(el);
+    const pct = Math.abs(v) * 50;
+    bar.style.width = pct + "%";
+    bar.style.left = v >= 0 ? "50%" : (50 - pct) + "%";
+  }
+}
+
+/* The UI refreshes the setpoint at 20 Hz. The Python side re-sends it to the
+   robot at 50 Hz and zeroes it if this stops -- so a dead browser tab or a
+   stuck key cannot leave the robot driving. */
+setInterval(() => {
+  if (!connected) return;
+  const key = JSON.stringify(sp);
+  const moving = sp.lx || sp.ly || sp.rx || sp.ry;
+  if (!moving && key === lastSent) return;   // idle: let the watchdog hold zero
+  lastSent = key;
+  post("/api/velocity", sp);
+}, 50);
+
+function hold(axis, val, on, el){
+  const k = axis + ":" + val;
+  on ? keysHeld.add(k) : keysHeld.delete(k);
+  if (el) el.classList.toggle("held", on);
+  recompute();
+}
+
+document.querySelectorAll("[data-drive]").forEach(btn => {
+  const axis = btn.dataset.drive, val = btn.dataset.val;
+  const down = e => { e.preventDefault(); if (connected) hold(axis, val, true, btn); };
+  const up   = e => { e.preventDefault(); hold(axis, val, false, btn); };
+  btn.addEventListener("pointerdown", down);
+  btn.addEventListener("pointerup", up);
+  btn.addEventListener("pointercancel", up);
+  btn.addEventListener("pointerleave", up);
+});
+
+const KEYMAP = {w:["lx","1"], s:["lx","-1"], a:["ly","1"], d:["ly","-1"],
+                q:["rx","1"], e:["rx","-1"]};
+
+addEventListener("keydown", ev => {
+  if (ev.target.tagName === "INPUT") return;
+  const k = ev.key.toLowerCase();
+  if (k === "escape"){ ev.preventDefault(); doEstop(); return; }
+  if (k === " "){ ev.preventDefault(); allStop(); return; }
+  const m = KEYMAP[k];
+  if (m && connected && !ev.repeat){
+    ev.preventDefault();
+    hold(m[0], m[1], true, document.querySelector(`[data-drive="${m[0]}"][data-val="${m[1]}"]`));
+  }
+});
+
+addEventListener("keyup", ev => {
+  const m = KEYMAP[ev.key.toLowerCase()];
+  if (m) hold(m[0], m[1], false,
+              document.querySelector(`[data-drive="${m[0]}"][data-val="${m[1]}"]`));
+});
+
+// Losing the window must not leave a key stuck down.
+addEventListener("blur", allStop);
+document.addEventListener("visibilitychange", () => { if (document.hidden) allStop(); });
+
+function allStop(){
+  keysHeld.clear();
+  document.querySelectorAll(".pad button").forEach(b => b.classList.remove("held"));
+  recompute();
+  if (connected) post("/api/stop");
+}
+
+function doEstop(){
+  if (!connected) return;
+  allStop();
+  post("/api/estop", {on: !estopActive});
+}
+
+$("btn-stop").onclick = allStop;
+$("btn-estop").onclick = doEstop;
+
+document.querySelectorAll("[data-gain]").forEach(b => {
+  b.onclick = () => {
+    gain = parseFloat(b.dataset.gain);
+    $("gain-v").textContent = gain.toFixed(2);
+    document.querySelectorAll("[data-gain]").forEach(x => x.classList.remove("on"));
+    b.classList.add("on");
+    recompute();
+  };
+});
+
+/* ---------------- commands --------------------------------------------- */
+document.querySelectorAll("[data-cmd]").forEach(b => {
+  b.onclick = () => post("/api/command", {cmd: b.dataset.cmd});
+});
+document.querySelectorAll("[data-post]").forEach(b => {
+  b.onclick = () => post(b.dataset.post);
+});
+
+let lightState = {front:false, back:false, auto:false};
+$("l-front").onclick = () => post("/api/command",
+  {cmd: lightState.front ? "fill_light/front_light_off" : "fill_light/front_light_on"});
+$("l-back").onclick = () => post("/api/command",
+  {cmd: lightState.back ? "fill_light/back_light_off" : "fill_light/back_light_on"});
+$("l-auto").onclick = () => post("/api/command",
+  {cmd: lightState.auto ? "fill_light/light_auto_work_off" : "fill_light/light_auto_work_on"});
+
+/* ---------------- connect ---------------------------------------------- */
+$("btn-conn").onclick = async () => {
+  $("btn-conn").disabled = true;
+  $("btn-conn").textContent = "CONNECTING…";
+  const r = await post("/api/connect", {host: $("host").value.trim(),
+                                        port: parseInt($("port").value, 10)});
+  $("btn-conn").textContent = "CONNECT";
+  $("btn-conn").disabled = false;
+  if (!r.ok) $("hs").innerHTML = `<span style="color:var(--crit)">${r.error}</span>`;
+};
+
+$("btn-disc").onclick = () => { allStop(); post("/api/disconnect"); };
+
+/* ---------------- state stream ----------------------------------------- */
+const TEL_ROWS = [
+  ["Connection",    s => s.state],
+  ["Control source",s => s.control?.source_name],
+  ["Device type",   s => s.handshake?.device_type],
+  ["Serial",        s => s.handshake?.sn],
+  ["System ver",    s => s.handshake?.version?.system],
+  ["—1", null],
+  ["Mode",          s => s.robot?.mode],
+  ["Motion status", s => s.robot?.motion_status],
+  ["Speed level",   s => s.robot?.speed_level],
+  ["Head angle",    s => fmt(s.robot?.head_angle, 2, "°")],
+  ["Head direction",s => s.robot?.head_direction],
+  ["Mileage",       s => fmt(s.robot?.mileage, 1, " m")],
+  ["—2", null],
+  ["vx / vy / vyaw",s => `${fmt(s.robot?.vx,2)} / ${fmt(s.robot?.vy,2)} / ${fmt(s.robot?.vyaw,2)}`],
+  ["Position xyz",  s => (s.motion?.position || []).map(v => v.toFixed(2)).join(" ") || "—"],
+  ["Yaw (rpy z)",   s => fmt(s.motion?.rpy?.[2], 3, " rad")],
+  ["—3", null],
+  ["E-stop soft",   s => bool(s.robot?.estop_software, true)],
+  ["E-stop hard",   s => bool(s.robot?.estop_hardware, true)],
+  ["Batt 1",        s => s.battery?.present1
+        ? `${fmt(s.battery.power1,0,"%")} · ${fmt(s.battery.voltage1,1,"V")} · ${fmt(s.battery.current1,2,"A")}`
+        : "absent"],
+  ["Batt 2",        s => s.battery?.present2
+        ? `${fmt(s.battery.power2,0,"%")} · ${fmt(s.battery.voltage2,1,"V")}`
+        : "absent"],
+  ["—4", null],
+  ["Link RTT",      s => s.link?.rtt_ms != null ? s.link.rtt_ms + " ms" : "—"],
+  ["Silent for",    s => s.link?.silent_s != null ? s.link.silent_s + " s" : "—"],
+  ["TX / RX frames",s => `${s.link?.tx ?? 0} / ${s.link?.rx ?? 0}`],
+];
+
+function fmt(v, dp, suffix){
+  if (v === null || v === undefined) return "—";
+  return Number(v).toFixed(dp) + (suffix || "");
+}
+function bool(v, dangerIfTrue){
+  if (v === null || v === undefined) return "—";
+  const cls = v ? (dangerIfTrue ? "critv" : "okv") : "";
+  return `<span class="${cls}">${v ? "ACTIVE" : "clear"}</span>`;
+}
+
+let telBuilt = false;
+function buildTel(){
+  $("tel").innerHTML = TEL_ROWS.map(([k]) =>
+    k.startsWith("—")
+      ? `<tr><td colspan="2" style="padding:5px 0"><div style="height:1px;background:var(--line)"></div></td></tr>`
+      : `<tr><td>${k}</td><td id="tv-${cssKey(k)}">—</td></tr>`).join("");
+  telBuilt = true;
+}
+const cssKey = k => k.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+
+function render(s){
+  if (!telBuilt) buildTel();
+
+  connected = !!s.connected;
+  $("btn-conn").disabled = connected;
+  $("btn-disc").disabled = !connected;
+  document.querySelectorAll("[data-cmd],[data-post],.pad button,#btn-stop,#btn-estop")
+    .forEach(b => b.disabled = !connected);
+
+  // --- authority strip ---
+  const held = s.control?.held;
+  const srcName = s.control?.source_name || "—";
+  let dot = "d-off", label = "DISCONNECTED";
+  if (connected){
+    if (held){ dot = "d-ok"; label = "YOU HOLD CONTROL"; }
+    else if (s.control?.source === 1){ dot = "d-warn"; label = "APP HAS CONTROL"; }
+    else { dot = "d-warn"; label = "NO CONTROLLER"; }
+  }
+  $("s-ctrl").innerHTML = `<span class="dot ${dot}"></span><b>${label}</b>`;
+
+  const sl = s.robot?.speed_level;
+  $("s-speed").textContent = sl ? sl.toUpperCase() : "—";
+  $("s-speed").className = (sl === "high" || sl === "medium") ? "warnv" : "";
+  $("s-mode").textContent   = (s.robot?.mode || "—").toUpperCase();
+  $("s-motion").textContent = (s.robot?.motion_status || "—").toUpperCase();
+
+  const rtt = s.link?.rtt_ms;
+  $("s-rtt").textContent = rtt != null ? rtt.toFixed(0) + " ms" : "—";
+  $("s-rtt").className = rtt == null ? "" : rtt > 250 ? "critv" : rtt > 120 ? "warnv" : "";
+
+  const b1 = s.battery?.power1, b2 = s.battery?.power2;
+  $("s-batt").textContent = b1 != null
+    ? `${b1.toFixed(0)}%` + (s.battery?.present2 ? ` / ${(b2||0).toFixed(0)}%` : "")
+    : "—";
+  $("s-batt").className = (b1 != null && b1 < 20) ? "critv" : (b1 != null && b1 < 30) ? "warnv" : "";
+
+  // --- banners ---
+  estopActive = !!(s.robot?.estop_software || s.robot?.estop_hardware);
+  $("btn-estop").textContent = estopActive ? "CLEAR E-STOP" : "E-STOP";
+  $("btn-estop").classList.toggle("clear", estopActive);
+
+  const crit = $("ban-crit"), warn = $("ban-warn");
+  if (estopActive){
+    crit.className = "banner crit on";
+    crit.textContent = "⚠ EMERGENCY STOP ACTIVE — the robot will not respond to motion commands";
+  } else if (s.control?.lost){
+    crit.className = "banner crit on";
+    crit.textContent = "⚠ CONTROL LOST — the App preempted the SDK. Motion halted.";
+  } else { crit.className = "banner crit"; }
+
+  if (connected && !held && !estopActive){
+    warn.className = "banner warn on";
+    warn.textContent = `Control source is ${srcName} — motion commands will be ignored. Press TAKE CONTROL.`;
+  } else { warn.className = "banner warn"; }
+
+  // --- telemetry table ---
+  for (const [k, fn] of TEL_ROWS){
+    if (!fn) continue;
+    const el = $("tv-" + cssKey(k));
+    if (el){
+      const v = fn(s);
+      el.innerHTML = (v === undefined || v === null || v === "") ? "—" : v;
+    }
+  }
+
+  // --- joint temps ---
+  const mt = s.robot?.motor_temp || {};
+  const names = Object.keys(mt).sort();
+  $("temps").innerHTML = names.length
+    ? names.map(n => {
+        const t = mt[n];
+        const cls = t >= 70 ? "critv" : t >= 55 ? "warnv" : "";
+        return `<div><span>${n}</span><b class="${cls}">${Math.round(t)}</b></div>`;
+      }).join("")
+    : `<div style="grid-column:1/-1;color:var(--muted)">no data</div>`;
+
+  // --- faults ---
+  const f = s.faults || [];
+  $("faults").innerHTML = f.length
+    ? f.map(x => {
+        const lv = x.level ?? 0;
+        const cls = lv >= 3 ? "critv" : lv >= 2 ? "critv" : "warnv";
+        return `<div class="${cls}">L${lv} ${x.module||"?"}/${x.submodule||"?"} — ${x.fault||"?"}</div>`;
+      }).join("")
+    : `<span style="color:var(--muted)">None reported.</span>`;
+
+  // --- light toggles ---
+  lightState = {front: !!s.robot?.light_front, back: !!s.robot?.light_back,
+                auto: !!s.robot?.light_auto};
+  $("l-front").classList.toggle("on", lightState.front);
+  $("l-back").classList.toggle("on", lightState.back);
+  $("l-auto").classList.toggle("on", lightState.auto);
+
+  // --- highlight active mode / speed ---
+  document.querySelectorAll("[data-cmd]").forEach(b => {
+    const c = b.dataset.cmd;
+    let on = false;
+    if (c.startsWith("mode/")) on = s.robot?.mode === c.slice(5).replace("navigation","nav");
+    if (c.startsWith("speed/")) on = s.robot?.speed_level === c.slice(6).replace("low","slow");
+    b.classList.toggle("on", on);
+  });
+}
+
+/* ---------------- log --------------------------------------------------- */
+const logEl = $("log");
+function appendLog(lines){
+  const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
+  for (const l of lines){
+    const d = document.createElement("div");
+    d.className = l.dir + (/error|FAULT|LOST/i.test(l.label) ? " lvl-err" : "");
+    const ts = new Date(l.t * 1000).toTimeString().slice(0, 8);
+    d.innerHTML = `<span class="t">${ts}</span>` +
+                  `<span class="tag">${l.dir.toUpperCase()}</span>` +
+                  `<span class="msg">${esc(l.label)}</span>` +
+                  (l.detail ? `<span class="det">${esc(l.detail)}</span>` : "");
+    logEl.appendChild(d);
+  }
+  while (logEl.childElementCount > 400) logEl.removeChild(logEl.firstChild);
+  if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+}
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+/* ---------------- SSE with reconnect ------------------------------------ */
+let es = null;
+function openStream(){
+  es = new EventSource("/api/events");
+  es.onmessage = ev => {
+    const d = JSON.parse(ev.data);
+    if (d.state) render(d.state);
+    if (d.log && d.log.length) appendLog(d.log);
+  };
+  es.onerror = () => { es.close(); connected = false; setTimeout(openStream, 1200); };
+}
+openStream();
+</script>
+</body>
+</html>

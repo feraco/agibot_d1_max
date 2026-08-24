@@ -58,6 +58,29 @@ TYPE_GOODBYE = 1050
 TYPE_IMU = 1100
 TYPE_LUX = 1101
 TYPE_MOTION = 1102
+TYPE_BODY_SPEED = 1103
+TYPE_JOINT_STATE = 1104
+
+TYPE_NAMES = {
+    TYPE_HANDSHAKE: "handshake",
+    TYPE_HEARTBEAT: "heartbeat",
+    TYPE_COMMAND: "command",
+    TYPE_TELEOP: "teleop",
+    TYPE_BODY_STATE: "body_state",
+    TYPE_FAULT: "fault",
+    TYPE_SENSOR_CONFIG: "sensor_config",
+    TYPE_TAKE_CONTROL: "take_control",
+    TYPE_RELEASE_CONTROL: "release_control",
+    TYPE_CONTROL_TAKEN: "control_taken",
+    TYPE_CONTROL_RELEASED: "control_released",
+    TYPE_CAMERA_BITRATE: "camera_bitrate",
+    TYPE_GOODBYE: "goodbye",
+    TYPE_IMU: "imu",
+    TYPE_LUX: "lux",
+    TYPE_MOTION: "motion",
+    TYPE_BODY_SPEED: "body_speed",
+    TYPE_JOINT_STATE: "joint_state",
+}
 
 # --- sensor ids for TYPE_SENSOR_CONFIG ------------------------------------
 SENSOR_IMU = 10
@@ -70,6 +93,71 @@ SENSOR_JOINT_STATE = 50
 HANDSHAKE_OK = 0
 HANDSHAKE_PROTOCOL_MISMATCH = 10
 HANDSHAKE_ALREADY_CONTROLLED = 20
+
+# --- ctrl_source values inside body-state 1004 ----------------------------
+# Note these differ from the head `src` identities above.
+CTRL_NONE = 0
+CTRL_APP = 1
+CTRL_SDK = 2
+CTRL_EXTERNAL = 3
+
+CTRL_NAMES = {
+    CTRL_NONE: "NONE",
+    CTRL_APP: "APP",
+    CTRL_SDK: "SDK",
+    CTRL_EXTERNAL: "EXTERNAL",
+}
+
+# --- command strings for message 1002 -------------------------------------
+# Grouped as the protocol table groups them. Commands marked unsupported on
+# some device_types are noted; check the handshake's device_type before use.
+COMMANDS = {
+    "emergency": {
+        "stop": "emergency/stop",
+        "recover": "emergency/recover",
+    },
+    "action": {
+        "stand_up": "action/stand_up",
+        "crawl": "action/crawl",
+        "lie_down": "action/lie_down",
+        "locked": "action/locked",
+        "climb": "action/climb",
+        "dsb": "action/dsb",
+        "slim": "action/slim",
+        "gait_walk": "action/gait_walk",
+        "wiggle": "action/new1new",
+        "reverse_head_tail": "reverse_head_tail",
+    },
+    "mode": {
+        "general": "mode/general",
+        "in_place": "mode/in_place",
+        "navigation": "mode/navigation",
+        "stair": "mode/stair",
+        "follow": "mode/follow",          # not on ZSM-1 / ZSM-1F
+        "track": "mode/track",            # not on ZSM-1 / ZSM-1F
+    },
+    "speed": {
+        "low": "speed/low",
+        "medium": "speed/medium",
+        "high": "speed/high",
+    },
+    "knee": {                             # not on point-foot variants
+        "same_direction": "knee_mode/same_direction",
+        "medial_facing": "knee_mode/medial_facing",
+    },
+    "light": {
+        "auto_on": "fill_light/light_auto_work_on",
+        "auto_off": "fill_light/light_auto_work_off",
+        "front_on": "fill_light/front_light_on",
+        "front_off": "fill_light/front_light_off",
+        "back_on": "fill_light/back_light_on",
+        "back_off": "fill_light/back_light_off",
+    },
+}
+
+ALL_COMMANDS = frozenset(
+    cmd for group in COMMANDS.values() for cmd in group.values()
+)
 
 
 class ProtocolError(ValueError):
@@ -188,7 +276,10 @@ def heartbeat(src: int = SRC_SDK) -> dict[str, Any]:
     return build_asdu(TYPE_HEARTBEAT, None, src=src)
 
 
-def command(cmd: str, src: int = SRC_SDK) -> dict[str, Any]:
+def command(cmd: str, src: int = SRC_SDK, *, strict: bool = True) -> dict[str, Any]:
+    """Discrete command. ``strict`` rejects strings not in the protocol table."""
+    if strict and cmd not in ALL_COMMANDS:
+        raise ProtocolError(f"unknown command: {cmd!r}")
     return build_asdu(TYPE_COMMAND, {"cmd": cmd}, src=src)
 
 
@@ -441,6 +532,18 @@ def _self_test() -> int:
         check("rejects out-of-range msg_id", False)
     except ProtocolError:
         check("rejects out-of-range msg_id", True)
+
+    try:
+        command("action/moonwalk")
+        check("rejects unknown command", False)
+    except ProtocolError:
+        check("rejects unknown command", True)
+
+    print("command table")
+    check("emergency/stop is known", "emergency/stop" in ALL_COMMANDS)
+    check("mode/navigation is known", "mode/navigation" in ALL_COMMANDS)
+    check("no duplicate command strings",
+          len(ALL_COMMANDS) == sum(len(g) for g in COMMANDS.values()))
 
     print()
     if failures:
