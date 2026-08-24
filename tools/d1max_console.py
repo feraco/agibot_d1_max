@@ -38,6 +38,8 @@ from urllib.parse import unquote, urlparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import d1max_proto as p          # noqa: E402
+import d1max_mission as mission  # noqa: E402
+import d1max_slam as slam      # noqa: E402
 from d1max_client import RobotClient  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -52,6 +54,44 @@ ORIN_HOST = "192.168.168.100"
 
 client: RobotClient | None = None
 _sim_proc: subprocess.Popen | None = None
+executor: "mission.MissionExecutor | None" = None
+calib: "mission.AxisCalibration | None" = None
+
+# Recording buffer and a rolling pose trace for the map view.
+recording: dict | None = None
+trace: list = []
+TRACE_MAX = 4000
+_trace_lock = threading.Lock()
+
+
+def _trace_thread() -> None:
+    """Sample the odometry pose at 10 Hz so the map has something to draw."""
+    last = None
+    while True:
+        time.sleep(0.1)
+        c = client
+        if c is None or c.state != "CONNECTED":
+            continue
+        pose = c.pose()
+        if pose is None:
+            continue
+        # Only keep points that actually moved, so a parked robot does not
+        # fill the buffer with duplicates.
+        if last and abs(pose[0] - last[0]) < 0.02 and abs(pose[1] - last[1]) < 0.02:
+            continue
+        last = pose
+        with _trace_lock:
+            trace.append([round(pose[0], 3), round(pose[1], 3)])
+            if len(trace) > TRACE_MAX:
+                del trace[:len(trace) - TRACE_MAX]
+
+
+def attach_executor(c: RobotClient) -> None:
+    global executor, calib
+    executor = mission.MissionExecutor(
+        c, on_log=lambda label, detail: c.log("sys", label, detail))
+    calib = mission.AxisCalibration(
+        c, on_log=lambda label, detail: c.log("sys", label, detail))
 
 
 def route_source_ip(dest: str) -> str | None:
@@ -107,6 +147,27 @@ def netcheck(target: str) -> dict:
         "hint": hint,
         "ready": where in ("ap", "wired", "simulator"),
     }
+
+
+def full_state() -> dict:
+    """Client snapshot plus mission/recording/calibration state."""
+    if client is None:
+        return {"state": "DISCONNECTED", "connected": False}
+    s = client.snapshot()
+    pose = client.pose()
+    s["pose"] = ([round(v, 3) for v in pose] if pose else None)
+    s["mission"] = executor.status() if executor else {"state": "IDLE"}
+    s["calib"] = ({"state": calib.state, "result": calib.result} if calib
+                  else {"state": "IDLE", "result": {}})
+    if recording is not None:
+        s["recording"] = {
+            "name": recording["name"],
+            "count": len(recording["waypoints"]),
+            "waypoints": [w.as_dict() for w in recording["waypoints"]],
+        }
+    else:
+        s["recording"] = None
+    return s
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -167,7 +228,40 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/state":
-            self._json(client.snapshot() if client else {"state": "DISCONNECTED"})
+            self._json(full_state())
+            return
+
+        if path == "/api/missions":
+            self._json({"missions": [m.as_dict() for m in mission.load_missions()]})
+            return
+
+        if path == "/api/trace":
+            with _trace_lock:
+                self._json({"trace": list(trace)})
+            return
+
+        if path == "/api/slam/check":
+            try:
+                self._json(slam.check_env(verbose=False))
+            except Exception as exc:
+                self._json({"ready": False, "issues": [str(exc)], "topics": []})
+            return
+
+        if path == "/api/maps":
+            try:
+                self._json({"maps": slam.list_maps(), "dir": slam.MAP_DIR})
+            except Exception as exc:
+                self._json({"maps": [], "error": str(exc)})
+            return
+
+        if path.startswith("/api/map/preview/"):
+            name = unquote(path.rsplit("/", 1)[-1])
+            png = os.path.join(slam.map_path(name), "preview.png")
+            try:
+                with open(png, "rb") as fh:
+                    self._send(200, fh.read(), "image/png")
+            except OSError:
+                self._send(404, b"no preview", "text/plain")
             return
 
         if path == "/api/events":
@@ -188,7 +282,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             while True:
                 if client is not None:
-                    payload = {"state": client.snapshot()}
+                    payload = {"state": full_state()}
                     lines = client.recent_log(since=last_log)
                     if lines:
                         last_log = max(l["t"] for l in lines)
@@ -209,6 +303,19 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         body = self._body()
 
+        if path == "/api/slam/save":
+            try:
+                meta = slam.save_map(
+                    str(body.get("name") or "map"), body.get("pcd") or None,
+                    float(body.get("res") or slam.DEFAULT_RES),
+                    float(body.get("z_min") or slam.DEFAULT_Z_MIN),
+                    float(body.get("z_max") or slam.DEFAULT_Z_MAX),
+                    int(body.get("min_hits") or slam.DEFAULT_HITS))
+                self._json({"ok": True, "meta": meta})
+            except Exception as exc:
+                self._json({"ok": False, "error": str(exc)})
+            return
+
         if path == "/api/connect":
             host = body.get("host") or (client.host if client else "192.168.234.1")
             port = int(body.get("port") or p.UDP_PORT)
@@ -225,6 +332,9 @@ class Handler(BaseHTTPRequestHandler):
                             "net": netcheck(host)}, 200)
                 return
             client.enable_default_telemetry()
+            attach_executor(client)
+            with _trace_lock:
+                trace.clear()
             self._json({"ok": True, "handshake": info})
             return
 
@@ -237,6 +347,12 @@ class Handler(BaseHTTPRequestHandler):
                 client.close()
 
             elif path == "/api/velocity":
+                # The executor owns the setpoint while a mission runs. Two
+                # writers fighting over it is how a robot ends up somewhere
+                # nobody intended.
+                if executor and executor.state == "RUNNING":
+                    self._json({"ok": False, "error": "mission running -- pause or abort first"})
+                    return
                 client.set_velocity(
                     lx=float(body.get("lx", 0.0)), ly=float(body.get("ly", 0.0)),
                     rx=float(body.get("rx", 0.0)), ry=float(body.get("ry", 0.0)),
@@ -261,6 +377,95 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/sensor":
                 client.sensor_config(int(body["sensor"]), bool(body["enable"]),
                                      body.get("freq"))
+
+            # ---------------- recording ----------------
+            elif path == "/api/record/start":
+                globals()["recording"] = {
+                    "name": str(body.get("name") or "Recorded route"),
+                    "waypoints": [],
+                }
+                with _trace_lock:
+                    trace.clear()
+                client.log("sys", "recording started", recording["name"])
+
+            elif path == "/api/record/mark":
+                if recording is None:
+                    self._json({"ok": False, "error": "not recording"})
+                    return
+                pose = client.pose()
+                if pose is None:
+                    self._json({"ok": False, "error": "no pose -- is sensor 30 enabled?"})
+                    return
+                bs = client.body_state or {}
+                light = (bs.get("fill_light") or {}).get("front")
+                kind = str(body.get("kind") or "transit")
+                wp = mission.Waypoint(
+                    x=pose[0], y=pose[1], yaw=pose[2],
+                    name=str(body.get("name") or f"WP {len(recording['waypoints']) + 1}"),
+                    kind=kind,
+                    tolerance=float(body.get("tolerance")
+                                    or (0.15 if kind == "capture" else 0.30)),
+                    hold_heading=bool(body.get("hold_heading", kind == "capture")),
+                    dwell_s=float(body.get("dwell_s") or (2.0 if kind == "capture" else 0.0)),
+                    lights=("on" if light else "keep"))
+                recording["waypoints"].append(wp)
+                client.log("sys", "waypoint marked",
+                           f"{wp.name} @ {wp.x:.2f},{wp.y:.2f}")
+                self._json({"ok": True, "count": len(recording["waypoints"]),
+                            "waypoint": wp.as_dict()})
+                return
+
+            elif path == "/api/record/undo":
+                if recording and recording["waypoints"]:
+                    recording["waypoints"].pop()
+
+            elif path == "/api/record/finish":
+                if recording is None or not recording["waypoints"]:
+                    globals()["recording"] = None
+                    self._json({"ok": False, "error": "nothing recorded"})
+                    return
+                m = mission.Mission(name=recording["name"],
+                                    waypoints=recording["waypoints"])
+                mission.save_mission(m)
+                client.log("sys", "mission saved",
+                           f"{m.name} · {len(m.waypoints)} waypoints")
+                globals()["recording"] = None
+                self._json({"ok": True, "mission": m.as_dict()})
+                return
+
+            elif path == "/api/record/cancel":
+                globals()["recording"] = None
+
+            # ---------------- mission ----------------
+            elif path == "/api/mission/run":
+                target = str(body.get("id") or "")
+                found = next((m for m in mission.load_missions() if m.id == target), None)
+                if found is None:
+                    self._json({"ok": False, "error": "mission not found"})
+                    return
+                ok, why = executor.start(found)
+                self._json({"ok": ok, "error": why})
+                return
+
+            elif path == "/api/mission/abort":
+                executor.abort(str(body.get("reason") or "operator abort"))
+
+            elif path == "/api/mission/pause":
+                executor.pause()
+
+            elif path == "/api/mission/resume":
+                executor.resume()
+
+            elif path == "/api/mission/delete":
+                mission.delete_mission(str(body.get("id") or ""))
+
+            # ---------------- calibration ----------------
+            elif path == "/api/calibrate":
+                ok, why = calib.start(gain=float(body.get("gain") or 0.12),
+                                      seconds=float(body.get("seconds") or 2.5))
+                self._json({"ok": ok, "error": why})
+                return
+
             else:
                 self._json({"ok": False, "error": "unknown endpoint"}, 404)
                 return
@@ -308,6 +513,8 @@ def main() -> int:
         print(f"[console] simulator running on {host}:{port}")
 
     client = RobotClient(host=host, port=port, platform=sys.platform)
+    attach_executor(client)
+    threading.Thread(target=_trace_thread, daemon=True, name="d1max-trace").start()
 
     if args.connect or args.sim:
         try:
@@ -338,6 +545,8 @@ def main() -> int:
     except KeyboardInterrupt:
         print("\n[console] shutting down")
     finally:
+        if executor is not None and executor.running:
+            executor.abort("console shutting down")
         if client is not None:
             client.close()
         srv.server_close()

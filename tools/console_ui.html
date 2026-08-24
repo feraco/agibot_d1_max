@@ -141,6 +141,19 @@ table.kv td:last-child{text-align:right;font-variant-numeric:tabular-nums}
 #net.ready #net-txt{color:var(--ok)}
 #net.bad #net-txt{color:var(--warn)}
 #btn-wait.on{border-color:var(--warn);background:rgba(217,165,33,.16);color:var(--warn)}
+#btn-rec.on{border-color:var(--crit);background:rgba(226,89,75,.16);color:var(--crit)}
+#map{display:block;width:100%;height:auto;background:var(--bg);
+  border-bottom:1px solid var(--line);touch-action:none;cursor:crosshair}
+#calib-box.ok .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(70,169,110,.22)}
+#calib-box.ok #calib-txt{color:var(--ok)}
+#calib-box.bad .dot{background:var(--crit);box-shadow:0 0 0 3px rgba(226,89,75,.22)}
+#calib-box.bad #calib-txt{color:var(--crit)}
+.mrow{display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--line);
+  border-radius:4px;background:var(--bg);margin-bottom:5px}
+.mrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.mrow .ct{color:var(--muted);font-size:10.5px;flex:none}
+.mrow button{padding:5px 9px;font-size:11px}
+#run-txt{color:var(--ink)}
 kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;
   padding:1px 5px;font-size:10px;color:var(--ink)}
 </style>
@@ -243,6 +256,71 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;
     </div>
 
     <div class="card">
+      <h2>Map — odometry frame</h2>
+      <canvas id="map" width="900" height="440"></canvas>
+      <div class="body" style="padding-top:10px">
+        <div class="row" style="justify-content:space-between">
+          <span class="hint" id="map-info">no pose data</span>
+          <span class="row" style="gap:6px">
+            <button class="sm" id="map-fit">FIT</button>
+            <button class="sm" id="map-clear">CLEAR TRACE</button>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Missions</h2>
+      <div class="body">
+        <div id="calib-box" class="netline">
+          <span class="dot d-warn"></span>
+          <span id="calib-txt">Run the axis check before your first mission — it
+            confirms <b>lx</b> really drives forward and that odometry agrees.</span>
+        </div>
+        <div class="row">
+          <button id="btn-calib">AXIS CHECK — drives forward ~30 cm</button>
+        </div>
+
+        <div class="lbl">Record by driving</div>
+        <div class="row">
+          <input id="mname" placeholder="Route name" size="18" aria-label="Mission name">
+          <button id="btn-rec">START RECORDING</button>
+        </div>
+        <div id="rec-panel" style="display:none">
+          <div class="grid g3" style="margin-bottom:8px">
+            <button id="btn-mark">MARK WAYPOINT</button>
+            <button id="btn-mark-cap">MARK CAPTURE</button>
+            <button class="sm" id="btn-undo">UNDO</button>
+          </div>
+          <div class="row">
+            <button id="btn-save">SAVE ROUTE</button>
+            <button class="sm" id="btn-cancel">CANCEL</button>
+            <span class="hint" id="rec-count">0 waypoints</span>
+          </div>
+          <div class="hint" style="margin-top:6px">
+            Drive to a spot, then mark it. <b>Capture</b> points get a tighter
+            tolerance and hold heading, so the framing repeats.
+          </div>
+        </div>
+
+        <div class="lbl">Saved routes</div>
+        <div id="mlist" class="hint">none yet</div>
+
+        <div id="run-panel" style="display:none">
+          <div class="netline" style="margin-top:10px">
+            <span class="dot d-ok"></span>
+            <span id="run-txt">—</span>
+          </div>
+          <div class="grid g3" style="margin-top:8px">
+            <button id="btn-pause">PAUSE</button>
+            <button id="btn-resume">RESUME</button>
+            <button id="btn-mabort">ABORT MISSION</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Commands</h2>
       <div class="body">
         <div class="lbl">Control ownership</div>
@@ -305,6 +383,33 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;
     <div class="card">
       <h2>Faults</h2>
       <div class="body"><div id="faults" class="hint">None reported.</div></div>
+    </div>
+
+    <div class="card">
+      <h2>SLAM maps</h2>
+      <div class="body">
+        <div id="slam-box" class="netline">
+          <span class="dot d-off"></span><span id="slam-txt">checking ROS 2…</span>
+        </div>
+        <div id="slam-issues" class="hint"></div>
+        <div class="row">
+          <button class="sm" id="btn-slam-check">RE-CHECK</button>
+          <button class="sm" id="btn-slam-help">HOW TO MAP</button>
+        </div>
+
+        <div class="lbl">Save a map from a SLAM point cloud</div>
+        <div class="row">
+          <input id="map-name" placeholder="Map name" size="10" aria-label="Map name">
+          <input id="map-pcd" placeholder="/path/to/scans.pcd" size="16" aria-label="PCD path">
+        </div>
+        <div class="row">
+          <button id="btn-map-save">SAVE MAP</button>
+          <span class="hint">Projects the cloud to a 2-D grid + preview.</span>
+        </div>
+
+        <div class="lbl">Saved maps</div>
+        <div id="maplist" class="hint">none yet</div>
+      </div>
     </div>
 
     <div class="card">
@@ -670,6 +775,59 @@ function render(s){
   $("l-back").classList.toggle("on", lightState.back);
   $("l-auto").classList.toggle("on", lightState.auto);
 
+  // --- mission ---
+  const ms = s.mission || {state:"IDLE"};
+  const missionRunning = ms.state === "RUNNING";
+  const missionActive = missionRunning || ms.state === "PAUSED";
+
+  $("run-panel").style.display = missionActive ? "" : "none";
+  if (missionActive){
+    activeWaypoints = activeWaypoints || null;
+    const wp = ms.waypoint;
+    $("run-txt").textContent =
+      `${ms.state} · ${ms.mission_name} · step ${ms.index+1}/${ms.total}` +
+      (wp ? ` → ${wp.name}` : "") +
+      (ms.distance != null ? ` · ${ms.distance} m to go` : "") +
+      ` · fwd ${ms.cmd.fwd} yaw ${ms.cmd.yaw}`;
+  } else if (ms.state === "ABORTED" || ms.state === "COMPLETED"){
+    $("run-txt").textContent = `${ms.state}${ms.reason ? " — " + ms.reason : ""}`;
+  }
+
+  // While the executor is driving, the manual pad must not fight it.
+  if (missionRunning){
+    document.querySelectorAll(".pad button").forEach(b => b.disabled = true);
+    if (keysHeld.size) allStop();
+  }
+
+  // --- recording ---
+  const rec = s.recording;
+  $("rec-panel").style.display = rec ? "" : "none";
+  $("btn-rec").classList.toggle("on", !!rec);
+  $("btn-rec").textContent = rec ? "RECORDING…" : "START RECORDING";
+  $("btn-rec").disabled = !connected || !!rec;
+  if (rec) $("rec-count").textContent = `${rec.count} waypoint${rec.count===1?"":"s"}`;
+
+  // --- calibration ---
+  const cal = s.calib || {};
+  const box = $("calib-box");
+  if (cal.state === "RUNNING"){
+    box.className = "netline";
+    $("calib-txt").textContent = "Axis check running — robot is driving forward…";
+  } else if (cal.result && cal.result.verdict){
+    const good = cal.result.ok;
+    box.className = "netline " + (good ? "ok" : "bad");
+    $("calib-txt").textContent =
+      `${cal.result.verdict.toUpperCase()} — moved ${cal.result.moved_m} m ` +
+      `(along ${cal.result.along_m}, across ${cal.result.across_m}). ${cal.result.note}`;
+  }
+  $("btn-calib").disabled = !connected || cal.state === "RUNNING" || missionActive;
+
+  // mission buttons need control + connection
+  ["btn-rec","btn-mark","btn-mark-cap","btn-save","btn-undo","btn-cancel"]
+    .forEach(id => { const b=$(id); if (b && !rec && id!=="btn-rec") b.disabled = !connected; });
+
+  drawMap(s);
+
   // --- highlight active mode / speed ---
   document.querySelectorAll("[data-cmd]").forEach(b => {
     const c = b.dataset.cmd;
@@ -699,6 +857,259 @@ function appendLog(lines){
 }
 const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 
+/* ================= MAP ================================================== */
+const cv = $("map"), cx = cv.getContext("2d");
+let trace = [], view = {cx:0, cy:0, scale:40}, autoFit = true;
+
+async function pullTrace(){
+  try{ trace = (await fetch("/api/trace").then(r=>r.json())).trace || []; }
+  catch(e){}
+}
+setInterval(() => { if (connected) pullTrace(); }, 700);
+
+$("map-fit").onclick = () => { autoFit = true; };
+$("map-clear").onclick = () => { trace = []; };
+
+function fitView(pts){
+  if (!pts.length) return;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for (const p of pts){ x0=Math.min(x0,p[0]); x1=Math.max(x1,p[0]);
+                        y0=Math.min(y0,p[1]); y1=Math.max(y1,p[1]); }
+  const pad = 1.5;
+  const w = Math.max(x1-x0, 2) + pad*2, h = Math.max(y1-y0, 2) + pad*2;
+  view.cx = (x0+x1)/2; view.cy = (y0+y1)/2;
+  view.scale = Math.min(cv.width/w, cv.height/h);
+}
+
+// world (x fwd, y left) -> screen. y is flipped so left is up-screen.
+const sx = wx => cv.width/2  + (wx - view.cx) * view.scale;
+const sy = wy => cv.height/2 - (wy - view.cy) * view.scale;
+
+function drawMap(s){
+  const wps = (s.recording?.waypoints) || activeWaypoints || [];
+  const pose = s.pose;
+  const pts = trace.concat(wps.map(w => [w.x, w.y]));
+  if (pose) pts.push([pose[0], pose[1]]);
+  if (autoFit) fitView(pts);
+
+  cx.clearRect(0,0,cv.width,cv.height);
+  cx.fillStyle = "#0D1116"; cx.fillRect(0,0,cv.width,cv.height);
+
+  // 1 m grid
+  const step = view.scale >= 26 ? 1 : view.scale >= 12 ? 2 : 5;
+  cx.strokeStyle = "#161E26"; cx.lineWidth = 1;
+  const x0 = Math.floor((view.cx - cv.width/2/view.scale)/step)*step;
+  const x1 = view.cx + cv.width/2/view.scale;
+  const y0 = Math.floor((view.cy - cv.height/2/view.scale)/step)*step;
+  const y1 = view.cy + cv.height/2/view.scale;
+  cx.beginPath();
+  for (let x=x0; x<=x1; x+=step){ cx.moveTo(sx(x),0); cx.lineTo(sx(x),cv.height); }
+  for (let y=y0; y<=y1; y+=step){ cx.moveTo(0,sy(y)); cx.lineTo(cv.width,sy(y)); }
+  cx.stroke();
+
+  // origin
+  cx.strokeStyle = "#243039"; cx.lineWidth = 1.5;
+  cx.beginPath(); cx.moveTo(sx(0)-7,sy(0)); cx.lineTo(sx(0)+7,sy(0));
+  cx.moveTo(sx(0),sy(0)-7); cx.lineTo(sx(0),sy(0)+7); cx.stroke();
+
+  // driven trace
+  if (trace.length > 1){
+    cx.strokeStyle = "#2E4650"; cx.lineWidth = 2; cx.beginPath();
+    trace.forEach((p,i) => i ? cx.lineTo(sx(p[0]),sy(p[1])) : cx.moveTo(sx(p[0]),sy(p[1])));
+    cx.stroke();
+  }
+
+  // planned route
+  if (wps.length > 1){
+    cx.strokeStyle = "#3FB6C1"; cx.lineWidth = 2; cx.setLineDash([6,4]);
+    cx.beginPath();
+    wps.forEach((w,i) => i ? cx.lineTo(sx(w.x),sy(w.y)) : cx.moveTo(sx(w.x),sy(w.y)));
+    cx.stroke(); cx.setLineDash([]);
+  }
+
+  // waypoints
+  const cur = s.mission?.state === "RUNNING" ? s.mission.index : -1;
+  wps.forEach((w,i) => {
+    const X = sx(w.x), Y = sy(w.y);
+    const done = cur >= 0 && i < cur, now = i === cur;
+    cx.beginPath(); cx.arc(X, Y, now ? 9 : 6, 0, 7);
+    if (w.kind === "capture"){ cx.fillStyle = done ? "#46A96E" : now ? "#3FB6C1" : "#2A6F77"; cx.fill(); }
+    else { cx.strokeStyle = done ? "#46A96E" : now ? "#3FB6C1" : "#4A5661"; cx.lineWidth = 2; cx.stroke(); }
+    if (now){ cx.strokeStyle="#3FB6C1"; cx.lineWidth=1.5;
+              cx.beginPath(); cx.arc(X,Y,15,0,7); cx.stroke(); }
+    cx.fillStyle = "#78848F"; cx.font = "10px ui-monospace,monospace";
+    cx.fillText(String(i+1), X+11, Y-8);
+  });
+
+  // robot
+  if (pose){
+    const X = sx(pose[0]), Y = sy(pose[1]), a = -pose[2];
+    cx.save(); cx.translate(X,Y); cx.rotate(a);
+    cx.fillStyle = "#3FB6C1"; cx.beginPath();
+    cx.moveTo(13,0); cx.lineTo(-7,7); cx.lineTo(-7,-7); cx.closePath(); cx.fill();
+    cx.restore();
+    cx.strokeStyle = "rgba(63,182,193,.35)"; cx.lineWidth=1;
+    cx.beginPath(); cx.arc(X,Y,17,0,7); cx.stroke();
+  }
+
+  // scale bar
+  cx.strokeStyle = "#4A5661"; cx.fillStyle = "#78848F";
+  cx.lineWidth = 2; cx.beginPath();
+  cx.moveTo(12, cv.height-14); cx.lineTo(12 + view.scale*step, cv.height-14); cx.stroke();
+  cx.font = "10px ui-monospace,monospace";
+  cx.fillText(step + " m", 14, cv.height-20);
+
+  $("map-info").textContent = pose
+    ? `x ${pose[0].toFixed(2)}  y ${pose[1].toFixed(2)}  yaw ${(pose[2]*180/Math.PI).toFixed(0)}°  ·  ${trace.length} trace pts`
+    : "no pose data — enable sensor 30 (motion) or check the connection";
+}
+
+/* ================= MISSIONS ============================================ */
+let activeWaypoints = null, missionsCache = [];
+
+async function refreshMissions(){
+  try{
+    const r = await fetch("/api/missions").then(x=>x.json());
+    missionsCache = r.missions || [];
+  }catch(e){ return; }
+  $("mlist").innerHTML = missionsCache.length ? "" : "none yet";
+  for (const m of missionsCache){
+    const d = document.createElement("div");
+    d.className = "mrow";
+    const when = new Date(m.created_at*1000).toLocaleString();
+    d.innerHTML = `<span class="nm">${esc(m.name)}</span>
+      <span class="ct">${m.waypoints.length} wp · ${esc(when)}</span>`;
+    const run = document.createElement("button");
+    run.textContent = "RUN"; run.onclick = () => runMission(m.id);
+    const show = document.createElement("button");
+    show.textContent = "SHOW";
+    show.onclick = () => { activeWaypoints = m.waypoints; autoFit = true; };
+    const del = document.createElement("button");
+    del.textContent = "✕";
+    del.onclick = async () => {
+      if (!confirm(`Delete "${m.name}"?`)) return;
+      await post("/api/mission/delete", {id:m.id}); refreshMissions();
+    };
+    d.append(run, show, del);
+    $("mlist").appendChild(d);
+  }
+}
+
+async function runMission(id){
+  const m = missionsCache.find(x => x.id === id);
+  if (m && !confirm(
+      `Run "${m.name}"?\n\n${m.waypoints.length} waypoints, autonomous.\n\n` +
+      `The robot will drive itself. Stand clear and keep a hand on the ` +
+      `physical e-stop.`)) return;
+  activeWaypoints = m ? m.waypoints : null;
+  const r = await post("/api/mission/run", {id});
+  if (!r.ok) alert("Could not start: " + r.error);
+}
+
+$("btn-pause").onclick  = () => post("/api/mission/pause");
+$("btn-resume").onclick = () => post("/api/mission/resume");
+$("btn-mabort").onclick = () => post("/api/mission/abort");
+
+/* ---- recording ---- */
+$("btn-rec").onclick = async () => {
+  await post("/api/record/start", {name: $("mname").value.trim() || "Recorded route"});
+};
+$("btn-mark").onclick     = () => post("/api/record/mark", {kind:"transit"});
+$("btn-mark-cap").onclick = () => post("/api/record/mark", {kind:"capture"});
+$("btn-undo").onclick     = () => post("/api/record/undo");
+$("btn-cancel").onclick   = () => post("/api/record/cancel");
+$("btn-save").onclick = async () => {
+  const r = await post("/api/record/finish");
+  if (!r.ok) return alert(r.error);
+  refreshMissions();
+};
+
+/* ---- axis calibration ---- */
+$("btn-calib").onclick = async () => {
+  if (!confirm("The robot will drive forward about 30 cm.\n\n" +
+               "It must be standing, in general mode, with clear space ahead " +
+               "and your hand on the physical e-stop.\n\nProceed?")) return;
+  const r = await post("/api/calibrate", {});
+  if (!r.ok) alert(r.error);
+};
+
+/* ================= SLAM MAPS =========================================== */
+async function slamCheck(){
+  try{
+    const s = await fetch("/api/slam/check").then(r=>r.json());
+    const box = $("slam-box");
+    box.className = "netline " + (s.ready ? "ready" : "bad");
+    box.querySelector(".dot").className = "dot " + (s.ready ? "d-ok" : "d-warn");
+    const seen = (s.topics||[]).length;
+    $("slam-txt").textContent = s.ready
+      ? `Ready to map — /front_lidar and /odom both visible (${seen} topics).`
+      : `Not ready to map (${seen} ROS topics visible).`;
+    $("slam-issues").innerHTML = (s.issues||[])
+      .map(i => `• ${esc(i)}`).join("<br>");
+  }catch(e){
+    $("slam-txt").textContent = "could not query the ROS 2 environment";
+  }
+}
+$("btn-slam-check").onclick = slamCheck;
+
+$("btn-slam-help").onclick = () => alert(
+`BUILD A SLAM MAP — see docs/dev/07-slam-mapping-howto.md
+
+1. Terminal A — publish odometry into ROS 2:
+     source /opt/ros/humble/setup.bash
+     export ROS_DOMAIN_ID=24
+     export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+     ros2 run rmw_zenoh_cpp rmw_zenohd
+   Terminal B:
+     python3 tools/d1max_odom_bridge.py --host 192.168.234.1
+
+2. Terminal C — run the SLAM front end (FAST-LIO2):
+     ros2 launch fast_lio mapping.launch.py config_file:=d1max.yaml
+
+3. Drive the robot slowly around the space, closing a loop.
+
+4. Save the cloud from FAST-LIO2, then:
+     python3 tools/d1max_slam.py save --name lab --pcd ~/scans.pcd
+
+   or paste the PCD path into SAVE MAP here.`);
+
+async function refreshMaps(){
+  try{
+    const r = await fetch("/api/maps").then(x=>x.json());
+    const maps = r.maps || [];
+    const box = $("maplist");
+    box.innerHTML = maps.length ? "" : "none yet";
+    for (const m of maps){
+      const d = document.createElement("div");
+      d.className = "mrow";
+      d.style.flexWrap = "wrap";
+      const dim = m.width ? `${m.width}×${m.height} @ ${m.resolution} m` : "no grid";
+      d.innerHTML = `<span class="nm">${esc(m.name)}</span><span class="ct">${esc(dim)}</span>`;
+      if (m.has_png){
+        const img = document.createElement("img");
+        img.src = "/api/map/preview/" + encodeURIComponent(m.name);
+        img.style.cssText = "width:100%;border:1px solid var(--line);border-radius:3px;margin-top:5px;image-rendering:pixelated";
+        d.appendChild(img);
+      }
+      box.appendChild(d);
+    }
+  }catch(e){}
+}
+
+$("btn-map-save").onclick = async () => {
+  const name = $("map-name").value.trim();
+  const pcd = $("map-pcd").value.trim();
+  if (!name) return alert("Give the map a name.");
+  $("btn-map-save").disabled = true;
+  const r = await post("/api/slam/save", {name, pcd: pcd || null});
+  $("btn-map-save").disabled = false;
+  if (!r.ok) return alert("Save failed: " + r.error);
+  refreshMaps();
+};
+
+slamCheck(); refreshMaps();
+setInterval(() => { if (!document.hidden) refreshMaps(); }, 15000);
+
 /* ---------------- SSE with reconnect ------------------------------------ */
 let es = null;
 function openStream(){
@@ -711,6 +1122,8 @@ function openStream(){
   es.onerror = () => { es.close(); connected = false; setTimeout(openStream, 1200); };
 }
 openStream();
+refreshMissions();
+setInterval(() => { if (!document.hidden) refreshMissions(); }, 8000);
 </script>
 </body>
 </html>

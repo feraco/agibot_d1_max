@@ -71,6 +71,7 @@ class RobotClient:
     # --- telemetry ---
     body_state: dict[str, Any] = field(default_factory=dict, init=False)
     motion: dict[str, Any] = field(default_factory=dict, init=False)
+    motion_at: float = field(default=0.0, init=False)   # monotonic, for staleness
     faults: list[dict[str, Any]] = field(default_factory=list, init=False)
     rtt_ms: float | None = field(default=None, init=False)
     last_rx_at: float = field(default=0.0, init=False)
@@ -285,6 +286,7 @@ class RobotClient:
 
         if t == p.TYPE_MOTION:
             self.motion = frame.data
+            self.motion_at = _now()
             return
 
         if t == p.TYPE_FAULT:
@@ -328,6 +330,21 @@ class RobotClient:
 
     def stop(self) -> None:
         self.set_velocity()
+
+    def pose(self) -> tuple[float, float, float] | None:
+        """(x, y, yaw) in the odometry frame, or None if 1102 is stale.
+
+        This is dead reckoning from the control board's own estimator -- good
+        enough to record and replay a route, but it drifts. Treat a None here
+        as a hard stop condition, never as "keep going with the last value".
+        """
+        if not self.motion or (_now() - self.motion_at) > 0.5:
+            return None
+        pos = self.motion.get("position")
+        rpy = self.motion.get("rpy")
+        if not pos or not rpy or len(pos) < 2 or len(rpy) < 3:
+            return None
+        return (float(pos[0]), float(pos[1]), float(rpy[2]))
 
     def command(self, cmd: str) -> None:
         self._send(p.command(cmd, src=self.src), label="cmd", detail=cmd)
