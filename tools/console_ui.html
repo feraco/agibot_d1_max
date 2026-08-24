@@ -134,6 +134,13 @@ table.kv td:last-child{text-align:right;font-variant-numeric:tabular-nums}
 #log .lvl-err .msg{color:var(--crit)}
 
 .hint{font-size:11px;color:var(--muted);line-height:1.55}
+.netline{display:flex;gap:8px;align-items:baseline;font-size:11.5px;
+  background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px 10px}
+.netline .dot{flex:none;align-self:center}
+#net-txt{color:var(--muted)}
+#net.ready #net-txt{color:var(--ok)}
+#net.bad #net-txt{color:var(--warn)}
+#btn-wait.on{border-color:var(--warn);background:rgba(217,165,33,.16);color:var(--warn)}
 kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;
   padding:1px 5px;font-size:10px;color:var(--ink)}
 </style>
@@ -162,12 +169,21 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;
         <div class="row">
           <input id="host" value="192.168.234.1" size="15" aria-label="Robot host">
           <input id="port" value="8082" size="5" aria-label="Robot UDP port">
+          <button class="sm" data-host="192.168.234.1">Wi-Fi AP</button>
+          <button class="sm" data-host="192.168.168.168">Wired</button>
+        </div>
+        <div class="row">
           <button id="btn-conn">CONNECT</button>
+          <button id="btn-wait">WAIT FOR ROBOT</button>
           <button id="btn-disc" disabled>DISCONNECT</button>
         </div>
+        <div class="netline" id="net">
+          <span class="dot d-off"></span><span id="net-txt">checking network…</span>
+        </div>
         <div class="hint" id="hs">
-          Wi-Fi AP <b>192.168.234.1</b> · wired <b>192.168.168.168</b> · UDP port 8082.
-          Close the RC app first, or it keeps control.
+          Close the RC app first, or it keeps control. Not on the hotspot yet?
+          Press <b>WAIT FOR ROBOT</b> and join <b>XG2WIFI_xxxxxx</b> — it links up
+          on its own.
         </div>
       </div>
     </div>
@@ -436,17 +452,67 @@ $("l-auto").onclick = () => post("/api/command",
   {cmd: lightState.auto ? "fill_light/light_auto_work_off" : "fill_light/light_auto_work_on"});
 
 /* ---------------- connect ---------------------------------------------- */
+document.querySelectorAll("[data-host]").forEach(b => {
+  b.onclick = () => { $("host").value = b.dataset.host; refreshNet(); };
+});
+
+/* Network preflight: tells "wrong Wi-Fi" apart from "robot not answering",
+   so the failure mode is actionable instead of a bare timeout. */
+async function refreshNet(){
+  const host = $("host").value.trim();
+  try{
+    const n = await fetch("/api/netcheck?host=" + encodeURIComponent(host))
+                    .then(r => r.json());
+    const el = $("net");
+    el.className = "netline " + (n.ready ? "ready" : "bad");
+    el.querySelector(".dot").className = "dot " + (n.ready ? "d-ok" : "d-warn");
+    $("net-txt").textContent = n.hint;
+  }catch(e){ /* server not up yet; the poller will retry */ }
+}
+$("host").addEventListener("change", refreshNet);
+refreshNet();
+setInterval(() => { if (!connected) refreshNet(); }, 3000);
+
+async function tryConnect(timeout){
+  return post("/api/connect", {host: $("host").value.trim(),
+                               port: parseInt($("port").value, 10),
+                               timeout: timeout});
+}
+
 $("btn-conn").onclick = async () => {
   $("btn-conn").disabled = true;
   $("btn-conn").textContent = "CONNECTING…";
-  const r = await post("/api/connect", {host: $("host").value.trim(),
-                                        port: parseInt($("port").value, 10)});
+  const r = await tryConnect(5);
   $("btn-conn").textContent = "CONNECT";
   $("btn-conn").disabled = false;
-  if (!r.ok) $("hs").innerHTML = `<span style="color:var(--crit)">${r.error}</span>`;
+  if (!r.ok){
+    $("hs").innerHTML = `<span style="color:var(--crit)">${esc(r.error)}</span>` +
+      (r.net ? `<br>${esc(r.net.hint)}` : "");
+    refreshNet();
+  }
 };
 
-$("btn-disc").onclick = () => { allStop(); post("/api/disconnect"); };
+/* "Start the UI now, join the hotspot in a minute" -- retry until it answers. */
+let waiting = false;
+$("btn-wait").onclick = async () => {
+  if (waiting){ waiting = false; return; }
+  waiting = true;
+  $("btn-wait").classList.add("on");
+  let n = 0;
+  while (waiting && !connected){
+    n++;
+    $("btn-wait").textContent = `WAITING… (${n}) — click to stop`;
+    const r = await tryConnect(1.5);
+    if (r.ok) break;
+    await refreshNet();
+    await new Promise(res => setTimeout(res, 1500));
+  }
+  waiting = false;
+  $("btn-wait").classList.remove("on");
+  $("btn-wait").textContent = "WAIT FOR ROBOT";
+};
+
+$("btn-disc").onclick = () => { waiting = false; allStop(); post("/api/disconnect"); };
 
 /* ---------------- state stream ----------------------------------------- */
 const TEL_ROWS = [
@@ -501,8 +567,18 @@ function buildTel(){
 }
 const cssKey = k => k.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
 
+let prefilled = false;
 function render(s){
   if (!telBuilt) buildTel();
+
+  // Adopt whatever target the server was launched with, so --host/--port on
+  // the command line is what the UI actually connects to.
+  if (!prefilled && s.host){
+    prefilled = true;
+    if (document.activeElement !== $("host")) $("host").value = s.host;
+    if (document.activeElement !== $("port")) $("port").value = s.port;
+    refreshNet();
+  }
 
   connected = !!s.connected;
   $("btn-conn").disabled = connected;

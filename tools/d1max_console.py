@@ -26,13 +26,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
 import subprocess
 import sys
 import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -44,8 +45,68 @@ UI_FILE = os.path.join(HERE, "console_ui.html")
 
 SNAPSHOT_HZ = 10
 
+# Known robot endpoints, used to tell "wrong network" from "robot not answering".
+AP_HOST = "192.168.234.1"
+WIRED_HOST = "192.168.168.168"
+ORIN_HOST = "192.168.168.100"
+
 client: RobotClient | None = None
 _sim_proc: subprocess.Popen | None = None
+
+
+def route_source_ip(dest: str) -> str | None:
+    """Local address the OS would use to reach ``dest``, or None if no route.
+
+    Connecting a UDP socket sends nothing -- it only does the route lookup --
+    so this is a free way to ask "am I on the robot's network yet?".
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect((dest, 9))
+        return s.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
+def netcheck(target: str) -> dict:
+    """Where this machine sits relative to the robot, in plain terms."""
+    src = route_source_ip(target)
+    ap = route_source_ip(AP_HOST)
+    wired = route_source_ip(WIRED_HOST)
+
+    on_ap = bool(ap and ap.startswith("192.168.234."))
+    on_wired = bool(wired and wired.startswith("192.168.168."))
+    loopback = target.startswith("127.")
+
+    if loopback:
+        where, hint = "simulator", "Pointed at a local simulator, not a robot."
+    elif on_ap and target == AP_HOST:
+        where, hint = "ap", f"On the robot's Wi-Fi (local address {ap}). Ready to connect."
+    elif on_wired and target in (WIRED_HOST, ORIN_HOST):
+        where, hint = "wired", f"On the robot's wired subnet (local address {wired}). Ready to connect."
+    elif on_ap and target == WIRED_HOST:
+        where = "ap-need-route"
+        hint = ("On the Wi-Fi AP but targeting the wired address. Either use "
+                f"{AP_HOST}, or add the route: "
+                "sudo ip route add 192.168.168.0/24 via 192.168.234.1")
+    elif src is None:
+        where, hint = "no-route", f"No route to {target}. Not on the robot's network yet."
+    else:
+        where = "other"
+        hint = (f"Local address for {target} would be {src}, which is not a robot "
+                "subnet. Join the robot's Wi-Fi (XG2WIFI_xxxxxx / 12345678).")
+
+    return {
+        "target": target,
+        "source_ip": src,
+        "on_ap": on_ap,
+        "on_wired": on_wired,
+        "where": where,
+        "hint": hint,
+        "ready": where in ("ap", "wired", "simulator"),
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -96,6 +157,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, b"", "image/x-icon")
             return
 
+        if path == "/api/netcheck":
+            qs = urlparse(self.path).query
+            target = AP_HOST
+            for part in qs.split("&"):
+                if part.startswith("host="):
+                    target = unquote(part[5:]) or AP_HOST
+            self._json(netcheck(target))
+            return
+
         if path == "/api/state":
             self._json(client.snapshot() if client else {"state": "DISCONNECTED"})
             return
@@ -144,11 +214,15 @@ class Handler(BaseHTTPRequestHandler):
             port = int(body.get("port") or p.UDP_PORT)
             if client is not None:
                 client.close()
+            # Short timeout when the UI is polling in "waiting for robot" mode,
+            # so each attempt fails fast instead of stalling the retry loop.
+            timeout = float(body.get("timeout") or 5.0)
             client = RobotClient(host=host, port=port, platform=sys.platform)
             try:
-                info = client.connect()
+                info = client.connect(timeout=timeout)
             except Exception as exc:
-                self._json({"ok": False, "error": str(exc)}, 200)
+                self._json({"ok": False, "error": str(exc),
+                            "net": netcheck(host)}, 200)
                 return
             client.enable_default_telemetry()
             self._json({"ok": True, "handshake": info})
