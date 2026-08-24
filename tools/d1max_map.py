@@ -47,6 +47,27 @@ TOPICS = ["/front_lidar", "/front_lidar/imu", "/tf", "/tf_static"]
 HERE = os.path.dirname(os.path.abspath(__file__))
 PUSH_FILES = ["d1max_proto.py", "d1max_client.py", "d1max_odom_bridge.py"]
 
+# FAST-LIO preprocess.lidar_type values.
+LIDAR_TYPE_NAMES = {1: "Livox", 2: "Velodyne-style (RoboSense)", 3: "Ouster"}
+
+
+def lidar_type_for(fields: str) -> int:
+    """Pick FAST-LIO's lidar_type from the PointCloud2 field names.
+
+    The D1 Max ships RoboSense units (the robot's own install space carries
+    rslidar_sdk / rslidar_msg). RoboSense clouds are laid out like Velodyne --
+    ring + per-point time -- so type 2 is the right starting point, not the
+    Livox default most FAST-LIO examples use.
+    """
+    f = fields.lower()
+    if "t" in f.split() and "reflectivity" in f:
+        return 3                      # Ouster: t, reflectivity, ambient
+    if "ring" in f or "timestamp" in f or "time" in f:
+        return 2                      # Velodyne / RoboSense
+    if "line" in f or "offset_time" in f:
+        return 1                      # Livox custom
+    return 2
+
 
 # ------------------------------------------------------------------ ssh glue
 def have(cmd: str) -> bool:
@@ -163,6 +184,12 @@ def cmd_doctor(args) -> int:
     if "humble" not in out:
         say("    ! expected humble — mapping commands will not work")
 
+    # The Orin runs its own Zenoh router. Starting a second one fails with
+    # "Address already in use" -- that error means things are fine, not broken.
+    rc, out = run_remote("ss -ltn 2>/dev/null | grep -c ':7447' || true")
+    if out.strip() and out.strip() != "0":
+        say("    zenoh router already running on :7447 ✓ (do NOT start another)")
+
     rc, out = ros_remote("ros2 topic list 2>/dev/null", timeout=40)
     topics = [t for t in out.splitlines() if t.startswith("/")]
     say(f"\n  Topics visible on the robot: {len(topics)}")
@@ -172,6 +199,18 @@ def cmd_doctor(args) -> int:
     if "/front_lidar" not in topics:
         say("\n    ! /front_lidar missing. Check the LiDAR is powered and the")
         say("      driver is running:  robot-launch egg")
+    else:
+        # Which SLAM front end config we need depends entirely on the point
+        # format, so read it rather than guess.
+        rc, out = ros_remote(
+            "timeout 12 ros2 topic echo /front_lidar --once --field fields "
+            "2>/dev/null | grep name | awk '{print $2}' | tr '\\n' ' '",
+            timeout=30)
+        fields = out.strip()
+        if fields:
+            say(f"\n  /front_lidar point fields: {fields}")
+            say(f"    -> lidar_type {lidar_type_for(fields)} "
+                f"({LIDAR_TYPE_NAMES.get(lidar_type_for(fields), '?')})")
 
     rc, out = ros_remote("ros2 pkg list 2>/dev/null | grep -i -E 'fast_lio|point_lio' || true",
                          timeout=40)
@@ -302,14 +341,15 @@ def cmd_install_slam(args) -> int:
 
 
 # --------------------------------------------------------------------- build
-CONFIG = r"""common:
+CONFIG_TMPL = """common:
     lid_topic:  "/front_lidar"
     imu_topic:  "/front_lidar/imu"
     time_sync_en: false
 preprocess:
-    lidar_type: 1
-    scan_line: 96
-    blind: 0.5
+    lidar_type: {lidar_type}          # {lidar_name}
+    scan_line: 96                     # Airy is a 96-line unit
+    blind: 0.5                        # ignore returns inside the robot's own body
+    timestamp_unit: 3                 # RoboSense stamps in seconds
 mapping:
     acc_cov: 0.1
     gyr_cov: 0.1
@@ -318,7 +358,7 @@ mapping:
     fov_degree: 360.0
     det_range: 100.0
     extrinsic_est_en: false
-    extrinsic_T: [ 0.0, 0.0, 0.0 ]
+    extrinsic_T: [ 0.0, 0.0, 0.0 ]    # IMU lives inside the LiDAR housing
     extrinsic_R: [ 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 ]
 publish:
     path_en: true
@@ -328,6 +368,7 @@ pcd_save:
     pcd_save_en: true
     interval: -1
 """
+
 
 
 def cmd_build(args) -> int:
@@ -344,10 +385,22 @@ def cmd_build(args) -> int:
         die("FAST-LIO2 is not installed on the Orin.\n"
             "    python3 tools/d1max_map.py install-slam")
 
+    lt = args.lidar_type
+    if not lt:
+        rc, out = ros_remote(
+            "timeout 12 ros2 topic echo /front_lidar --once --field fields "
+            "2>/dev/null | grep name | awk '{print $2}' | tr '\\n' ' '", timeout=30)
+        fields = out.strip()
+        lt = lidar_type_for(fields) if fields else 2
+        say(f"  /front_lidar fields: {fields or '(could not read — assuming RoboSense)'}")
+    say(f"  lidar_type {lt} ({LIDAR_TYPE_NAMES.get(lt, '?')})")
+
+    cfg = CONFIG_TMPL.format(lidar_type=lt,
+                             lidar_name=LIDAR_TYPE_NAMES.get(lt, "?"))
     say("  writing config …")
     cfgpath = "~/lio_ws/src/FAST_LIO/config/d1max.yaml"
     run_remote(f"mkdir -p ~/lio_ws/src/FAST_LIO/config && "
-               f"cat > {cfgpath} << 'D1MAXEOF'\n{CONFIG}\nD1MAXEOF", check=True)
+               f"cat > {cfgpath} << 'D1MAXEOF'\n{cfg}\nD1MAXEOF", check=True)
     run_remote("rm -rf ~/lio_ws/src/FAST_LIO/PCD && mkdir -p ~/lio_ws/src/FAST_LIO/PCD")
 
     say("  starting FAST-LIO2 and replaying the bag …\n")
@@ -362,8 +415,11 @@ def cmd_build(args) -> int:
     if ".pcd" not in out:
         die("SLAM produced no PCD. Check /tmp/d1max_lio.log on the Orin:\n"
             f"    ssh {ORIN_USER}@{ORIN_HOST} tail -50 /tmp/d1max_lio.log\n\n"
-            "Common causes: lidar_type or scan_line wrong for this driver, or "
-            "the bag has no /front_lidar/imu.")
+            "Common causes:\n"
+            "  - lidar_type wrong. The D1 Max ships RoboSense (rslidar_sdk on the\n"
+            "    robot), which is Velodyne-style: try --lidar-type 2, then 3, then 1.\n"
+            "  - the bag has no /front_lidar/imu\n"
+            "  - timestamp_unit mismatch (RoboSense stamps in seconds)")
     say(f"\n  cloud produced:\n{out}")
     say(f"\nNext:  python3 tools/d1max_map.py fetch {name}")
     return 0
@@ -432,6 +488,8 @@ def main() -> int:
     b = sub.add_parser("build", help="run SLAM over a recorded bag on the Orin")
     b.add_argument("name")
     b.add_argument("--rate", type=float, default=1.0, help="bag playback rate")
+    b.add_argument("--lidar-type", type=int, choices=[1, 2, 3], default=None,
+                   help="FAST-LIO lidar_type; detected from the point fields if omitted")
 
     f = sub.add_parser("fetch", help="pull the cloud back and project it to 2-D")
     f.add_argument("name")

@@ -177,7 +177,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--host", default="192.168.168.168",
-                    help="RK3588 control board address")
+                    help="RK3588 control board address "
+                         "(192.168.168.168 wired / on the Orin; "
+                         "192.168.234.1 over the robot's Wi-Fi)")
     ap.add_argument("--port", type=int, default=p.UDP_PORT)
     ap.add_argument("--topic", default="/odom")
     ap.add_argument("--odom-frame", default="odom")
@@ -185,6 +187,8 @@ def main() -> int:
     ap.add_argument("--rate", type=float, default=50.0)
     ap.add_argument("--no-tf", action="store_true",
                     help="publish only the topic (use if another node owns odom->base_link)")
+    ap.add_argument("--external", action="store_true",
+                    help="identify as EXTERNAL (src=4) instead of SDK (src=3)")
     ap.add_argument("--use-robot-clock", action="store_true",
                     help="stamp with the robot's own ns timestamp instead of ROS time")
     args = ap.parse_args()
@@ -197,12 +201,27 @@ def main() -> int:
               "    export RMW_IMPLEMENTATION=rmw_zenoh_cpp\n", file=sys.stderr)
         return 1
 
-    client = RobotClient(host=args.host, port=args.port, device="d1max-odom-bridge")
+    client = RobotClient(host=args.host, port=args.port, device="d1max-odom-bridge",
+                         src=(p.SRC_EXTERNAL if args.external else p.SRC_SDK))
     print(f"[bridge] connecting to {args.host}:{args.port} …")
     try:
         info = client.connect()
     except Exception as exc:
-        print(f"[bridge] connect failed: {exc}", file=sys.stderr)
+        msg = str(exc)
+        print(f"[bridge] connect failed: {msg}", file=sys.stderr)
+        if "already controlled" in msg:
+            print(
+                "\nAnother terminal holds the session. This bridge only reads\n"
+                "telemetry -- it never commands the robot -- but the handshake is\n"
+                "refused all the same. Fix by doing one of:\n\n"
+                "  1. Close the RC handset app (background it fully), then retry.\n"
+                "  2. Close the operator console if it is connected; one client at\n"
+                "     a time is the supported arrangement.\n"
+                "  3. Try identifying as EXTERNAL rather than SDK:\n"
+                f"       python3 {os.path.basename(__file__)} --host {args.host} --external\n"
+                "\nIf you are running this ON the Orin, note the control board is at\n"
+                f"{args.host} — over the wired LAN that is 192.168.168.168.\n",
+                file=sys.stderr)
         return 1
     print(f"[bridge] connected: sn={info.get('sn')}")
     client.sensor_config(p.SENSOR_MOTION, True)     # 1102 @ 50 Hz

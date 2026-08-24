@@ -29,6 +29,48 @@ your own machine, or when something above fails and you need to see the parts.
 
 ---
 
+## Three things that will bite you on the Orin NX
+
+**1. Do not start a Zenoh router on the Orin.** It already runs one. Starting a
+second gives:
+
+```
+Unable to open listener tcp/[::]:7447: Address already in use (os error 98)
+```
+
+That error means the robot is healthy. On the Orin you only need:
+
+```bash
+source /opt/ros/humble/setup.bash
+export ROS_DOMAIN_ID=24
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 topic list
+```
+
+`ros2 run rmw_zenoh_cpp rmw_zenohd` is for a **remote laptop** only.
+
+**2. `handshake rejected: already controlled by another terminal`.** Something
+else holds the control session — usually the RC handset app. The odometry
+bridge only ever reads telemetry, but the handshake is refused regardless.
+Close the RC app (fully, not just backgrounded), or close the operator console
+if it is connected. `--external` identifies as EXTERNAL rather than SDK and is
+worth a try. Also note that **from the Orin, the control board is
+`192.168.168.168`**, not the Wi-Fi address.
+
+**3. The LiDARs are RoboSense, not Livox.** The robot's own install space
+carries `rslidar_sdk` and `rslidar_msg`. RoboSense clouds are laid out
+Velodyne-style (`ring` + per-point `timestamp`), so FAST-LIO needs
+`lidar_type: 2`, not the `lidar_type: 1` that most FAST-LIO examples show.
+`d1max_map.py build` reads the actual PointCloud2 field names off the running
+topic and picks for you; override with `--lidar-type`.
+
+The robot's driver install space also contains `uss_driver`, `imu_driver`,
+`sixents_gps_driver`, `uwb_driver`, `nlink_parser`, `laser_scan`,
+`realsense_ros_wrapper` and `livox_driver` — worth a look, since `laser_scan`
+suggests a 2-D scan conversion may already exist.
+
+---
+
 Step-by-step for producing a map of a real space with the D1 Max.
 
 The robot publishes LiDAR and IMU on ROS 2 from the Orin NX, but **no odometry,
