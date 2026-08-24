@@ -53,6 +53,10 @@ try:
 except ImportError as exc:      # keep the import error useful
     HAVE_ROS = False
     _ROS_ERR = str(exc)
+    # The class below subclasses Node at import time, so it needs *something*
+    # to inherit from even when ROS is absent. Without this the module dies
+    # with a bare NameError before main() can explain what is actually wrong.
+    Node = object
 
 
 # Loose but honest. Legged dead reckoning is decent over metres, poor over
@@ -195,10 +199,19 @@ def main() -> int:
 
     if not HAVE_ROS:
         print(f"error: ROS 2 python packages not importable ({_ROS_ERR})\n\n"
-              "Source your ROS 2 environment first:\n"
+              "This node needs rclpy, so it has to run somewhere ROS 2 exists.\n"
+              "The Orin NX already has Humble; your laptop probably does not.\n\n"
+              "Easiest — let the mapping tool run it on the robot for you:\n"
+              "    python3 tools/d1max_map.py record <name>\n\n"
+              "Or run it on the Orin by hand:\n"
+              "    ssh robot@192.168.168.100            # password: 1\n"
               "    source /opt/ros/humble/setup.bash\n"
               "    export ROS_DOMAIN_ID=24\n"
-              "    export RMW_IMPLEMENTATION=rmw_zenoh_cpp\n", file=sys.stderr)
+              "    export RMW_IMPLEMENTATION=rmw_zenoh_cpp\n"
+              "    python3 d1max_odom_bridge.py --host 192.168.168.168\n\n"
+              "If you ARE on a machine with ROS 2 and still see this, a conda\n"
+              "env is probably shadowing the system Python:  conda deactivate\n",
+              file=sys.stderr)
         return 1
 
     client = RobotClient(host=args.host, port=args.port, device="d1max-odom-bridge",
