@@ -1,5 +1,34 @@
 # 07 — Building and Saving a SLAM Map
 
+## The short way — no ROS 2 on your laptop
+
+The Orin NX already runs ROS 2 Humble and already sees both LiDARs. Drive it
+from your laptop over SSH and you never install ROS at all:
+
+```bash
+sudo apt install -y openssh-client sshpass    # once
+conda deactivate                              # if conda is active
+
+python3 tools/d1max_map.py doctor             # reachable? what is running?
+python3 tools/d1max_map.py record lab         # records while you drive
+python3 tools/d1max_map.py install-slam       # once, builds FAST-LIO2 on the robot
+python3 tools/d1max_map.py build lab          # SLAM over the recording
+python3 tools/d1max_map.py fetch lab          # pull it back + 2-D grid
+```
+
+`record` needs nothing beyond what the robot already has, so you can capture
+data on your first session and decide how to process it later. LiDAR time on a
+real site is the expensive part; a bag can be re-processed as often as you like.
+
+While recording, drive from the console in another window. Technique matters
+more than tuning: speed LOW, gentle inputs, slow turns, **close the loop**, and
+cover walls, corners and doorways.
+
+The rest of this document is the manual route — useful when you want ROS 2 on
+your own machine, or when something above fails and you need to see the parts.
+
+---
+
 Step-by-step for producing a map of a real space with the D1 Max.
 
 The robot publishes LiDAR and IMU on ROS 2 from the Orin NX, but **no odometry,

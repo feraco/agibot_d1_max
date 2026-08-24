@@ -1053,25 +1053,28 @@ async function slamCheck(){
 $("btn-slam-check").onclick = slamCheck;
 
 $("btn-slam-help").onclick = () => alert(
-`BUILD A SLAM MAP — see docs/dev/07-slam-mapping-howto.md
+`MAKE A MAP — no ROS 2 needed on this laptop.
 
-1. Terminal A — publish odometry into ROS 2:
-     source /opt/ros/humble/setup.bash
-     export ROS_DOMAIN_ID=24
-     export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-     ros2 run rmw_zenoh_cpp rmw_zenohd
-   Terminal B:
-     python3 tools/d1max_odom_bridge.py --host 192.168.234.1
+Everything runs on the robot's Orin NX, which already has ROS 2 Humble
+and sees both LiDARs. Four commands, in a normal terminal:
 
-2. Terminal C — run the SLAM front end (FAST-LIO2):
-     ros2 launch fast_lio mapping.launch.py config_file:=d1max.yaml
+  python3 tools/d1max_map.py doctor        can we reach it? what's there?
+  python3 tools/d1max_map.py record lab    records while you drive
+  python3 tools/d1max_map.py install-slam  one-time, builds FAST-LIO2
+  python3 tools/d1max_map.py build lab     runs SLAM over the recording
+  python3 tools/d1max_map.py fetch lab     pulls it back + makes the 2-D grid
 
-3. Drive the robot slowly around the space, closing a loop.
+First run needs:   sudo apt install -y openssh-client sshpass
+And if conda is active:   conda deactivate
 
-4. Save the cloud from FAST-LIO2, then:
-     python3 tools/d1max_slam.py save --name lab --pcd ~/scans.pcd
+While recording, drive HERE in this console:
+  - Speed LOW, gentle inputs
+  - Turn slowly — fast spins break LiDAR-inertial SLAM
+  - CLOSE THE LOOP, come back to where you started
+  - Cover walls, corners, doorways
 
-   or paste the PCD path into SAVE MAP here.`);
+The map then appears in SAVED MAPS below.
+Full detail: docs/dev/07-slam-mapping-howto.md`);
 
 async function refreshMaps(){
   try{
