@@ -68,7 +68,7 @@ have controls with **no D1 Max equivalent**, and the D1 Max has controls with
 | Arm / shoulder / elbow / wrist joint control | none — no arms |
 | Hand / fist / gripper (`x2_hand`, `x2_fist`) | none |
 | Waist yaw + pitch | none |
-| Head pan/tilt | none (fixed sensor mast) |
+| Head pan/tilt | **`ControlHead(left_right, up_down)`** — In-Place mode only |
 | Whole-body pose / retargeting | none |
 | Bipedal balance & step planning | replaced by gait modes |
 
@@ -189,18 +189,33 @@ fill_light/back_light_on          fill_light/back_light_off
 \* not on ZSM-1 / ZSM-1F  † not on point-foot variants — gate these in the UI
 off the model reported at handshake.
 
+Full method-by-method API: **`docs/dev/08-sdk-api-reference.md`**.
+
 ### 2.4 Teleop scaling
 
-`lx`, `ly`, `rx` are normalised **±1.0** and rescaled by the active speed level.
-At **LOW**: `1.0` → 1.0 m/s forward, 0.5 m/s lateral, 1.5 rad/s yaw.
+`lx`, `ly`, `rx` are normalised **±1.0** and rescaled by the active speed level:
 
-The UI must show which level is active next to the pad — the same stick
-deflection means three different things.
+| Level | forward_back | left_right | yaw |
+|---|---|---|---|
+| **1 Low** | ±1.0 m/s | ±0.5 m/s | ±1.5 rad/s |
+| **2 Medium** | ±2.0 m/s | ±0.5 m/s if \|fwd\| < 1.0, else **0** | ±1.5 rad/s if \|fwd\| < 1.0, else ±1.0 |
+| **3 High** | ±3.0 m/s | ±0.5 m/s if \|fwd\| < 1.0, else **0** | ±1.5 / ±1.0 / **±0.5** above 2.0 m/s |
 
-> **Unverified:** the `lx` / `ly` axis assignment is not yet confirmed on real
-> hardware. `tools/d1max_mission.py` ships an `AxisCalibration` routine that
-> drives one axis and decomposes the resulting motion. **Run it before trusting
-> any autonomous mode.**
+Two consequences for the UI. The same stick deflection means three different
+things, so the active level must be visible next to the pad. And **lateral
+translation is silently cut to zero above 1 m/s forward at Medium and High** —
+a strafe input that works on the bench does nothing at speed.
+
+The C++ SDK documents the order explicitly:
+`Move(left_right, forward_back, yaw)` — **lateral first**, `+left_right` = translate
+left, `+forward_back` = forward, `+yaw` = rotate left (`docs/source/3.3`).
+
+> **Still verify on hardware.** What is documented is the *SDK method* order.
+> `tools/d1max_proto.py` writes the wire fields `lx`/`ly`/`rx` directly, and the
+> mapping from those field names onto the documented arguments is inferred, not
+> stated. `tools/d1max_mission.py` ships an `AxisCalibration` routine that drives
+> one axis and decomposes the resulting motion. **Run it before trusting any
+> autonomous mode** — see `docs/dev/08-sdk-api-reference.md`.
 
 ---
 
@@ -302,7 +317,7 @@ The D1 Max column is already fixed. The left column gets populated by reading
 | _velocity / cmd_vel_ | 1003 @ 50 Hz + 1 s dead-man | rewrite — add the watchdog |
 | _e-stop_ | `emergency/stop` + local pump zero | keep UI, swap call |
 | _arm / hand / waist panels_ | **no equivalent** | delete |
-| _head pan-tilt_ | **no equivalent** | delete |
+| _head pan-tilt_ | `ControlHead` — In-Place mode only | keep, gate on mode |
 | _posture / stance_ | `action/*` (§2.3) | remap vocabulary |
 | _gait / walk mode_ | `mode/*` + `speed/*` | remap vocabulary |
 | — | `knee_mode/*`, fill lights, `reverse_head_tail` | **new panels** |
