@@ -286,6 +286,90 @@ Python, Rust, or Go.
 
 ---
 
+## Obstacle avoidance and SLAM — neither is in the SDK
+
+Asked often enough to be worth stating flatly: **RobotSDK 0.1.1 has no obstacle
+avoidance and no mapping/navigation API.** Not "undocumented" — absent.
+
+- `SDKClient` has **no** nav, avoidance, map, goal or path method among its 36.
+- `IDataCallback` has **no** LiDAR, ultrasonic or map callback among its 9.
+- `避障` (obstacle avoidance) appears in exactly **one** file across the whole
+  documentation set: `2.2 SDK软件服务接口列表`, the service *roadmap* table
+  ("超声波雷达接口 / 实现自主避障功能 / v0.0.5").
+- `SLAM` / `建图` appears in **two**: that same roadmap table — marked
+  **选配, optional/extra-cost** — and `1.6`, which only says the Orin NX
+  "负责建图、定位、导航等业务功能" (handles mapping, localisation, navigation).
+- No `/map`, `/scan`, `/cmd_vel`, `/nav*`, costmap or goal topic is documented
+  anywhere.
+
+**Nothing stops this robot from walking into a wall.** Any autonomy has to be
+built on the raw sensor streams below.
+
+### What you actually get — ROS 2 on the Orin NX, not the SDK
+
+| Topic | Type | Rate | Notes |
+|---|---|---|---|
+| `/front_lidar` | `sensor_msgs/PointCloud2` | 10 Hz | QoS **best_effort**. Sensor IP `192.168.1.102` |
+| `/rear_lidar` | `sensor_msgs/PointCloud2` | 10 Hz | QoS **best_effort**. Sensor IP `192.168.2.102` |
+| `/uss_driver/uss_left/range` | `sensor_msgs/Range` | 10 Hz | 0–4 m |
+| `/uss_driver/uss_right/range` | `sensor_msgs/Range` | 10 Hz | 0–4 m |
+
+```bash
+ssh robot@192.168.168.100          # password: 1
+ros2 topic echo /front_lidar --once
+ros2 topic echo /uss_driver/uss_left/range --once
+```
+
+> **Ultrasonic trap.** `docs/source/4.3` documents `field_of_view`, `min_range`
+> and `max_range` as **fixed at 0** — the driver does not populate them. You get
+> a bare distance scalar with no cone geometry, so the FOV has to be hardcoded
+> from the datasheet. Only two sensors, left and right: there is **no forward
+> ultrasonic**, so they cover flanks, not travel direction.
+
+Two LiDARs at 10 Hz is a workable avoidance input, but you write the layer.
+
+### The safety systems that do exist (`docs/source/2.3`)
+
+Reactive stops, **none obstacle-triggered**:
+
+| Trigger | Effect | Recovery |
+|---|---|---|
+| Hard e-stop button | lowers slowly to the ground, red light | twist the button out; auto-recovers if no other fault |
+| Soft e-stop (SDK or RC) | stops immediately, ignores all control | release the soft stop |
+| RC/network disconnect (incl. congestion) | auto-stop, slow descent | reconnect the App |
+| Battery present and **< 10 %** | auto-stop, slow descent | charge |
+| Joint fault | auto-stop, slow descent | clear the fault |
+| IMU comms loss | auto-stop, slow descent | — |
+
+From SDK v0.0.6, to trigger a soft e-stop from the handset *while the SDK holds
+control*, you must open the App after `TakeControl` — then the RC's red button
+works at any time. Worth knowing before a field test.
+
+### The one autonomous behaviour that ships — and it is not navigation
+
+`docs/source/5.2`, autonomous recharge: **optional**, needs RK3588 ≥ 0.2.4 and
+Orin NX ≥ 0.4.5, plus the dock. It is explicitly **无图回充 — *mapless*
+recharge**: place the robot facing the dock, ~1.5 m away, with the dock's QR
+code fully in the camera's view. That is visual servoing onto a fiducial, not
+path planning.
+
+```bash
+./control 192.168.168.168 8081 192.168.168.100 10010
+```
+
+Note the demo talks to **two** endpoints — the RK3588 on `8081` (WebSocket, not
+the usual UDP 8082) and a separate Orin NX service on **`10010`**, which is
+otherwise undocumented and may be where the optional SLAM package lives.
+
+### Consequence for this repo
+
+This gap is the reason `tools/` exists. `d1max_odom_bridge.py` supplies the
+missing motion prior, `d1max_map.py` drives FAST-LIO2 on the Orin, and
+`d1max_slam.py` projects the cloud to a nav2 grid — all of it building the layer
+the SDK does not provide. See `docs/dev/03` and `docs/dev/07`.
+
+---
+
 ## Minimal working sequence
 
 ```cpp
