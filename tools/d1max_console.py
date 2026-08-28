@@ -24,8 +24,10 @@ Stdlib only: no pip install, no build step.
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -40,6 +42,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import d1max_proto as p          # noqa: E402
 import d1max_mission as mission  # noqa: E402
 import d1max_slam as slam      # noqa: E402
+import d1max_mapsession as mapsession  # noqa: E402
+import d1max_localization as localization  # noqa: E402
+import d1max_preflight as preflight  # noqa: E402
 from d1max_client import RobotClient  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -56,6 +61,8 @@ client: RobotClient | None = None
 _sim_proc: subprocess.Popen | None = None
 executor: "mission.MissionExecutor | None" = None
 calib: "mission.AxisCalibration | None" = None
+mapping = mapsession.MappingSession()
+localizer = localization.Localization()
 
 # Recording buffer and a rolling pose trace for the map view.
 recording: dict | None = None
@@ -247,6 +254,29 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ready": False, "issues": [str(exc)], "topics": []})
             return
 
+        if path == "/api/preflight":
+            try:
+                self._json(preflight.run())
+            except Exception as exc:
+                self._json({"rows": [], "ready": False, "blocking": [str(exc)]})
+            return
+
+        if path == "/api/localize/status":
+            try:
+                st = localizer.status()
+                st["pose_frame"] = executor.pose_frame if executor else "odom"
+                self._json(st)
+            except Exception as exc:
+                self._json({"running": False, "error": str(exc)})
+            return
+
+        if path == "/api/slam/status":
+            try:
+                self._json(mapping.status())
+            except Exception as exc:
+                self._json({"running": False, "error": str(exc)})
+            return
+
         if path == "/api/maps":
             try:
                 self._json({"maps": slam.list_maps(), "dir": slam.MAP_DIR})
@@ -302,6 +332,60 @@ class Handler(BaseHTTPRequestHandler):
         global client
         path = urlparse(self.path).path
         body = self._body()
+
+        if path == "/api/localize/start":
+            try:
+                st = localizer.start(
+                    str(body.get("map") or ""),
+                    seed=(float(body.get("x") or 0.0),
+                          float(body.get("y") or 0.0),
+                          float(body.get("yaw") or 0.0)),
+                    rear=bool(body.get("rear", True)))
+                if executor is not None:
+                    executor.pose_provider = localizer.pose
+                    executor.pose_frame = "map"
+                self._json({"ok": True, "status": st})
+            except Exception as exc:
+                self._json({"ok": False, "error": str(exc)})
+            return
+
+        if path == "/api/localize/stop":
+            try:
+                st = localizer.stop()
+                if executor is not None and client is not None:
+                    executor.pose_provider = client.pose
+                    executor.pose_frame = "odom"
+                self._json({"ok": True, "status": st})
+            except Exception as exc:
+                self._json({"ok": False, "error": str(exc)})
+            return
+
+        if path == "/api/localize/seed":
+            try:
+                self._json({"ok": True, "result": localizer.seed(
+                    float(body.get("x") or 0.0), float(body.get("y") or 0.0),
+                    float(body.get("yaw") or 0.0))})
+            except Exception as exc:
+                self._json({"ok": False, "error": str(exc)})
+            return
+
+        if path == "/api/slam/start":
+            try:
+                st = mapping.start(
+                    str(body.get("name") or "map"),
+                    rear=bool(body.get("rear")),
+                    with_odom=bool(body.get("odom", True)))
+                self._json({"ok": True, "status": st})
+            except Exception as exc:
+                self._json({"ok": False, "error": str(exc)})
+            return
+
+        if path == "/api/slam/stop":
+            try:
+                self._json({"ok": True, "status": mapping.stop()})
+            except Exception as exc:
+                self._json({"ok": False, "error": str(exc)})
+            return
 
         if path == "/api/slam/save":
             try:
@@ -526,7 +610,28 @@ def main() -> int:
             print(f"[console] initial connect failed: {exc}")
             print("[console] the UI is still up -- press CONNECT there to retry")
 
-    srv = ThreadingHTTPServer((args.bind, args.http_port), Handler)
+    try:
+        srv = ThreadingHTTPServer((args.bind, args.http_port), Handler)
+    except OSError as exc:
+        if getattr(exc, "errno", None) != errno.EADDRINUSE:
+            raise
+        # The simulator is spawned before this bind, so a port clash would
+        # otherwise leave it orphaned holding its own UDP port.
+        if _sim_proc is not None:
+            _sim_proc.terminate()
+            try:
+                _sim_proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                _sim_proc.kill()
+        if client is not None:
+            client.close()
+        print(f"[console] port {args.http_port} is already in use.\n")
+        print("  Another console is probably still running. Find it with:")
+        print(f"      ss -lptn 'sport = :{args.http_port}'")
+        print("  then stop it with `kill <pid>`, or start this one elsewhere:")
+        print(f"      python3 tools/d1max_console.py --host {host} "
+              f"--http-port {args.http_port + 1}")
+        return 1
     srv.daemon_threads = True
 
     shown = "127.0.0.1" if args.bind in ("127.0.0.1", "localhost") else args.bind
@@ -540,6 +645,11 @@ def main() -> int:
     if not args.no_browser and args.bind in ("127.0.0.1", "localhost"):
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
 
+    def _term(_sig, _frm):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _term)
+
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
@@ -552,6 +662,10 @@ def main() -> int:
         srv.server_close()
         if _sim_proc is not None:
             _sim_proc.terminate()
+            try:
+                _sim_proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                _sim_proc.kill()
     return 0
 
 

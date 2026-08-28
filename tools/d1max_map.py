@@ -45,7 +45,8 @@ ROS_ENV = ("source /opt/ros/humble/setup.bash && "
 TOPICS = ["/front_lidar", "/front_lidar/imu", "/tf", "/tf_static"]
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PUSH_FILES = ["d1max_proto.py", "d1max_client.py", "d1max_odom_bridge.py"]
+PUSH_FILES = ["d1max_proto.py", "d1max_client.py", "d1max_odom_bridge.py",
+              "d1max_localizer.py"]
 
 # FAST-LIO preprocess.lidar_type values.
 LIDAR_TYPE_NAMES = {1: "Livox", 2: "Velodyne-style (RoboSense)", 3: "Ouster"}

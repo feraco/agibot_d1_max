@@ -397,6 +397,23 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;
           <button class="sm" id="btn-slam-help">HOW TO MAP</button>
         </div>
 
+        <div class="row">
+          <button class="sm" id="btn-preflight">PREFLIGHT (robot + Orin NX)</button>
+        </div>
+        <div id="preflight" class="hint"></div>
+
+        <div class="lbl">Record a mapping run</div>
+        <div class="row">
+          <input id="rec-name" placeholder="Map name" size="10" aria-label="Recording name">
+          <label class="hint"><input type="checkbox" id="rec-rear" checked> rear LiDAR</label>
+          <label class="hint"><input type="checkbox" id="rec-odom" checked> /odom</label>
+        </div>
+        <div class="row">
+          <button id="btn-rec-start">START MAPPING</button>
+          <button id="btn-rec-stop" disabled>STOP &amp; CLOSE BAG</button>
+        </div>
+        <div id="rec-status" class="hint">idle</div>
+
         <div class="lbl">Save a map from a SLAM point cloud</div>
         <div class="row">
           <input id="map-name" placeholder="Map name" size="10" aria-label="Map name">
@@ -406,6 +423,18 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;
           <button id="btn-map-save">SAVE MAP</button>
           <span class="hint">Projects the cloud to a 2-D grid + preview.</span>
         </div>
+
+        <div class="lbl">Localise on a map (missions in map frame)</div>
+        <div class="row">
+          <input id="loc-map" placeholder="Map name" size="10" aria-label="Map to localise on">
+          <input id="loc-x" placeholder="x" size="4" value="0"><input id="loc-y" placeholder="y" size="4" value="0">
+          <input id="loc-yaw" placeholder="yaw" size="4" value="0">
+        </div>
+        <div class="row">
+          <button id="btn-loc-start">START LOCALISING</button>
+          <button id="btn-loc-stop" disabled>STOP</button>
+        </div>
+        <div id="loc-status" class="hint">missions are using <b>odometry</b> (drifts)</div>
 
         <div class="lbl">Saved maps</div>
         <div id="maplist" class="hint">none yet</div>
@@ -1110,7 +1139,139 @@ $("btn-map-save").onclick = async () => {
   refreshMaps();
 };
 
-slamCheck(); refreshMaps();
+/* ---------------- mapping runs (recorded on the Orin NX) ---------------- */
+function fmtBytes(n){
+  if (!n) return "0 B";
+  const u = ["B","KB","MB","GB"]; let i = 0;
+  while (n >= 1024 && i < u.length-1){ n /= 1024; i++; }
+  return n.toFixed(i ? 1 : 0) + " " + u[i];
+}
+function fmtDur(s){
+  s = Math.floor(s||0);
+  return String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0");
+}
+
+let recPoll = null;
+
+function renderRec(st){
+  const el = $("rec-status");
+  if (!st || (!st.name && !st.error)){ el.textContent = "idle"; return; }
+  if (st.error){
+    el.innerHTML = '<span style="color:#f66">' + String(st.error).replace(/</g,"&lt;") + '</span>';
+  } else if (st.starting){
+    el.textContent = "starting…";
+  } else if (st.running){
+    const odom = st.odom_ok === false ? "  ·  /odom MISSING (LiDAR+IMU only)" : "";
+    el.textContent = "recording '" + st.name + "'  ·  " + fmtDur(st.elapsed) +
+                     "  ·  " + fmtBytes(st.bytes) + odom;
+  } else if (st.name){
+    let t = "stopped '" + st.name + "'  ·  " + fmtDur(st.elapsed) + "  ·  " + fmtBytes(st.bytes);
+    if (st.metadata_ok === false) t += "  ·  BAG MAY NOT REPLAY";
+    el.textContent = t;
+  }
+  $("btn-rec-start").disabled = !!st.running || !!st.starting;
+  $("btn-rec-stop").disabled  = !st.running;
+}
+
+async function pollRec(){
+  try { renderRec(await fetch("/api/slam/status").then(r=>r.json())); }
+  catch(e){ /* console may be mid-restart */ }
+}
+
+$("btn-rec-start").onclick = async () => {
+  const name = $("rec-name").value.trim();
+  if (!name) return alert("Give the run a name.");
+  $("btn-rec-start").disabled = true;
+  $("rec-status").textContent = "starting… (pushing the odometry bridge to the Orin NX)";
+  const r = await post("/api/slam/start", {
+    name, rear: $("rec-rear").checked, odom: $("rec-odom").checked});
+  if (!r.ok){ renderRec({error: r.error}); $("btn-rec-start").disabled = false; return; }
+  renderRec(r.status);
+  if (!recPoll) recPoll = setInterval(pollRec, 2000);
+};
+
+$("btn-rec-stop").onclick = async () => {
+  $("btn-rec-stop").disabled = true;
+  $("rec-status").textContent = "stopping (interrupting the recorder so the bag closes cleanly)…";
+  const r = await post("/api/slam/stop", {});
+  if (recPoll){ clearInterval(recPoll); recPoll = null; }
+  if (!r.ok){ renderRec({error: r.error}); return; }
+  renderRec(r.status);
+  if (!$("map-name").value) $("map-name").value = r.status.name || "";
+};
+
+/* ---------------- preflight: check the real chain, on the right boxes --- */
+$("btn-preflight").onclick = async () => {
+  const el = $("preflight");
+  el.textContent = "checking robot, route, Orin NX, lidar, FAST-LIO…";
+  $("btn-preflight").disabled = true;
+  let r;
+  try { r = await fetch("/api/preflight").then(x=>x.json()); }
+  catch(e){ el.textContent = "preflight failed: " + e; $("btn-preflight").disabled=false; return; }
+  $("btn-preflight").disabled = false;
+
+  const mark = {ok:"✓", warn:"!", fail:"✗", skip:"·"};
+  const col  = {ok:"#5c5", warn:"#db4", fail:"#f66", skip:"#666"};
+  el.innerHTML = (r.rows||[]).map(row =>
+    `<div style="color:${col[row.state]}">${mark[row.state]} ${row.label}` +
+    (row.detail ? `<div style="color:#888;margin-left:1.2em">${
+        String(row.detail).replace(/</g,"&lt;")}</div>` : "") +
+    ((row.state==="fail"||row.state==="warn") && row.fix
+       ? `<div style="color:#db4;margin-left:1.2em">→ ${
+            String(row.fix).replace(/</g,"&lt;").replace(/\n/g,"<br>&nbsp;&nbsp;")}</div>` : "") +
+    `</div>`).join("") +
+    `<div style="margin-top:.5em">record: <b>${r.can_record?"YES":"no"}</b> · ` +
+    `build map: <b>${r.can_build_map?"YES":"no"}</b> · ` +
+    `localise: <b>${r.can_localize?"YES":"no"}</b></div>`;
+};
+
+/* ---------------- localisation: swap missions onto the map frame -------- */
+let locPoll = null;
+
+function renderLoc(st){
+  const el = $("loc-status");
+  if (!st){ el.textContent = "—"; return; }
+  if (st.error){
+    el.innerHTML = '<span style="color:#f66">' + String(st.error).replace(/</g,"&lt;") + '</span>';
+  } else if (st.running && st.ready){
+    const conv = st.converged ? "" : '  <span style="color:#db4">(converging…)</span>';
+    el.innerHTML = `map frame <b>${st.map}</b> · x=${st.x} y=${st.y} yaw=${st.yaw}` +
+                   ` · spread ${st.spread} m${conv}`;
+  } else if (st.running){
+    el.textContent = "localiser up, waiting for a fix…";
+  } else {
+    el.innerHTML = "missions are using <b>odometry</b> (drifts)";
+  }
+  $("btn-loc-start").disabled = !!st.running;
+  $("btn-loc-stop").disabled  = !st.running;
+}
+
+$("btn-loc-start").onclick = async () => {
+  const map = $("loc-map").value.trim();
+  if (!map) return alert("Which map? Use a name from Saved maps.");
+  $("btn-loc-start").disabled = true;
+  $("loc-status").textContent = "starting the localiser on the Orin NX…";
+  const r = await post("/api/localize/start", {
+    map, x: parseFloat($("loc-x").value)||0,
+    y: parseFloat($("loc-y").value)||0, yaw: parseFloat($("loc-yaw").value)||0});
+  if (!r.ok){ renderLoc({error: r.error}); $("btn-loc-start").disabled=false; return; }
+  renderLoc(r.status);
+  if (!locPoll) locPoll = setInterval(pollLoc, 1000);
+};
+
+$("btn-loc-stop").onclick = async () => {
+  $("btn-loc-stop").disabled = true;
+  const r = await post("/api/localize/stop", {});
+  if (locPoll){ clearInterval(locPoll); locPoll = null; }
+  renderLoc(r.status || {running:false});
+};
+
+async function pollLoc(){
+  try { renderLoc(await fetch("/api/localize/status").then(r=>r.json())); }
+  catch(e){ /* console may be restarting */ }
+}
+
+slamCheck(); refreshMaps(); pollRec(); pollLoc();
 setInterval(() => { if (!document.hidden) refreshMaps(); }, 15000);
 
 /* ---------------- SSE with reconnect ------------------------------------ */

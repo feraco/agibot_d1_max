@@ -148,6 +148,12 @@ class MissionExecutor:
     def __init__(self, client, on_log: Callable[[str, str], None] | None = None):
         self.client = client
         self.on_log = on_log or (lambda label, detail: None)
+        # Where poses come from. Defaults to the control board's dead
+        # reckoning; the console swaps in map-frame localisation when it is
+        # running, so a mission can be replayed against a SLAM map instead of
+        # drifting odometry. Same (x, y, yaw) contract either way.
+        self.pose_provider: Callable[[], tuple | None] = client.pose
+        self.pose_frame = 'odom'
 
         self.state = "IDLE"          # IDLE READY RUNNING PAUSED COMPLETED ABORTED
         self.mission: Mission | None = None
@@ -289,7 +295,7 @@ class MissionExecutor:
                 self.abort(f"step {self.index + 1} timed out after {wp.timeout_s:.0f}s")
                 break
 
-            pose = self.client.pose()
+            pose = self.pose_provider()
             if pose is None:
                 self.abort("pose stale (no 1102 motion data)")
                 break
