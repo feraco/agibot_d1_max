@@ -261,10 +261,22 @@ class RobotClient:
                 continue
             self.rx_count += 1
             self.last_rx_at = _now()
-            self._handle(frame)
+            try:
+                self._handle(frame)
+            except Exception as exc:
+                # A single malformed or unexpected frame must never deafen the
+                # client: this thread is the only reader of the socket, so if it
+                # dies we stop seeing telemetry, faults and control-loss events
+                # while still believing we are connected.
+                self.log("rx", "frame error",
+                         f"type={getattr(frame, 'type', '?')}: "
+                         f"{type(exc).__name__}: {exc}")
 
     def _handle(self, frame: p.Frame) -> None:
         t = frame.type
+        # The robot may send a frame with no data object at all, or with an
+        # explicit JSON null. Both decode to None, so normalise once here.
+        data = frame.data if isinstance(frame.data, dict) else {}
 
         if t == p.TYPE_HEARTBEAT:
             echo = frame.time_ms
@@ -275,8 +287,8 @@ class RobotClient:
             return
 
         if t == p.TYPE_BODY_STATE:
-            self.body_state = frame.data
-            src = frame.data.get("ctrl_source", p.CTRL_NONE)
+            self.body_state = data
+            src = data.get("ctrl_source", p.CTRL_NONE)
             if src != self.control_source:
                 self.log("rx", "control source",
                          f"{p.CTRL_NAMES.get(self.control_source, '?')} "
@@ -285,12 +297,14 @@ class RobotClient:
             return
 
         if t == p.TYPE_MOTION:
-            self.motion = frame.data
+            self.motion = data
             self.motion_at = _now()
             return
 
         if t == p.TYPE_FAULT:
-            faults = frame.data.get("faults", [])
+            # `.get(k, [])` is not enough: the robot sends "faults": null,
+            # and a present-but-null key returns None, not the default.
+            faults = data.get("faults") or []
             self.faults = faults
             for f in faults:
                 self.log("rx", f"FAULT L{f.get('level')}",
@@ -447,7 +461,7 @@ class RobotClient:
                 "light_front": light.get("front"),
                 "light_back": light.get("back"),
                 "light_auto": light.get("auto_work"),
-                "motor_temp": bs.get("motor_temp", {}),
+                "motor_temp": bs.get("motor_temp") or {},
             },
 
             "battery": {

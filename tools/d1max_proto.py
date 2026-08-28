@@ -171,21 +171,31 @@ class Frame:
     msg_id: int
     payload: dict[str, Any]
 
+    # NB: `.get(k, default)` returns None for a key that is *present but null*,
+    # and the robot does send explicit JSON nulls (e.g. "faults": null on a
+    # 1005 with nothing to report). Every accessor below therefore coerces,
+    # rather than trusting the default to fire.
+    @property
+    def _head(self) -> dict[str, Any]:
+        h = self.payload.get("head")
+        return h if isinstance(h, dict) else {}
+
     @property
     def type(self) -> int | None:
-        return self.payload.get("head", {}).get("type")
+        return self._head.get("type")
 
     @property
     def src(self) -> int | None:
-        return self.payload.get("head", {}).get("src")
+        return self._head.get("src")
 
     @property
     def time_ms(self) -> int | None:
-        return self.payload.get("head", {}).get("time")
+        return self._head.get("time")
 
     @property
     def data(self) -> dict[str, Any]:
-        return self.payload.get("data", {})
+        d = self.payload.get("data")
+        return d if isinstance(d, dict) else {}
 
 
 def now_ms() -> int:
